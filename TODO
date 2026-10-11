@@ -144,7 +144,7 @@ M6  Windows frontend                                                  [x]
       H19 Keys, Settings pages, debugger stepping and its prompt in split
       octal (screenshots). Not driven from here: modified shortcuts (Wine's
       Wayland driver takes no synthetic modifiers)
-M7  macOS frontend                                                    [~]
+M7  macOS frontend                                                    [x]
   [x] AppKit at parity: CVDisplayLink display (4:3 or square, smoothing,
       visual bell), status line (disk and link lights), menus (Machine,
       Drives rebuilt as it opens, Edit, View, FujiNet, Window, Help) with
@@ -152,10 +152,31 @@ M7  macOS frontend                                                    [~]
       Disk, drag and drop, Finder's Open With (CFBundleDocumentTypes:
       h8d, h17, h17disk, imd, td0), FujiNet console log
   [x] Settings (six tabs), H19 Keys window, debugger window
-  [ ] verify: macos.yml green on arm64 and x86_64 (written on Linux; CI is
-      the first compile)
-M8  packaging                                                         [ ]
-M9  CI/CD                                                             [ ]
+  verify: macos.yml green on arm64 and x86_64 on its first run (written on
+      Linux; CI is its only compile): the bundle builds and links on both,
+      no warnings from frontends/macos
+M8  packaging                                                         [x]
+  [x] flatpak manifests (GNOME 49, KDE 6.11): SDL3, the web UI's python
+      wheels, the firmware and mbedTLS pinned; no --filesystem, no --device
+  [x] NSIS installer (per-user), the Windows zip from the same staged folder
+  [x] licences in every package: LICENSE, LICENSE.VirtualH89 (BSD-3-Clause,
+      clause 2), LICENSE.z80pack (MIT) -- docdir, bundle Resources, beside
+      the exe
+  [x] AppStream screenshots (data/screenshots): FUJIDEV under HDOS, the
+      debugger in split octal, Preferences
+  verify: both flatpaks built and installed locally; the GNOME one, a
+      ROM-less build, showed the first-run ROM dialog and imported h89.zip
+      and heath_tlb.zip through the portal's file chooser to the MTR-90
+      prompt; a blank .h8d chosen through the portal (/run/user/.../doc/)
+      was INITed by HDOS and the label is in the file on the host; metainfo
+      validates
+M9  CI/CD                                                             [~]
+  [x] flatpak.yml (both manifests), release.yml (DEB/RPM/TGZ per frontend
+      with an install check, both .flatpak bundles, Windows zip + NSIS with
+      the import whitelist, macOS arm64/x86_64 zips with otool and licence
+      checks; a draft release on a v* tag, a dry run by hand)
+  [ ] verify: every workflow green; the release dry run produces every
+      artifact
 M10 polish, family audit                                              [ ]
 
 Notes / gotchas

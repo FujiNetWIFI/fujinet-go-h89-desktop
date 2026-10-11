@@ -194,6 +194,17 @@ else()
   set(CPACK_PACKAGE_NAME "fujinet-go-h89")
 endif()
 
+# The licences that travel with every binary: the GPL, and the notices the
+# vendored code's licences ask a binary distribution to carry (VirtualH89's
+# BSD-3-Clause, clause 2; Z80Pack's MIT). In the package's own doc directory
+# on Linux; frontends/macos puts them in the bundle's Resources and
+# release.yml beside the Windows exe.
+if(TARGET fujinet-go-h89-gnome OR TARGET fujinet-go-h89-kde)
+  set(H89_DOCDIR "${CMAKE_INSTALL_DATADIR}/doc/${CPACK_PACKAGE_NAME}")
+  install(FILES LICENSE core/v89/LICENSE.z80pack DESTINATION ${H89_DOCDIR})
+  install(FILES core/v89/LICENSE DESTINATION ${H89_DOCDIR} RENAME LICENSE.VirtualH89)
+endif()
+
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "FujiNet")
 set(CPACK_PACKAGE_CONTACT "https://github.com/tschak909/fujinet-go-h89-desktop/issues")

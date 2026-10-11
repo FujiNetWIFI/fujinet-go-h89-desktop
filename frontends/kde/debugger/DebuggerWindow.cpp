@@ -408,6 +408,12 @@ Window::Window(h89session *session, QWidget *parent)
             if (tab.compare(QLatin1String(names[i]), Qt::CaseInsensitive) == 0)
                 m_tabs->setCurrentIndex(i);
     }
+    /* the Prompt tab is for typing: its input has the keyboard whenever the
+     * tab shows (otherwise the toolbar's first button would) */
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
+        if (index == 0) m_promptIn->setFocus();
+    });
+    if (m_tabs->currentIndex() == 0) m_promptIn->setFocus();
     connect(&m_timer, &QTimer::timeout, this, &Window::tick);
     m_timer.start(100);
 }

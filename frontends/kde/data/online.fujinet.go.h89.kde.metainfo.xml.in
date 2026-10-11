@@ -44,6 +44,14 @@
       <caption>HDOS 2.0 running fujinet-lib's FujiNet tests on the H19</caption>
       <image>https://raw.githubusercontent.com/tschak909/fujinet-go-h89-desktop/main/data/screenshots/1_hdos_fujidev.png</image>
     </screenshot>
+    <screenshot>
+      <caption>The debugger in Heath's split octal, with the FujiNet card's 82C55</caption>
+      <image>https://raw.githubusercontent.com/tschak909/fujinet-go-h89-desktop/main/data/screenshots/2_debugger.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Preferences: the cards in the H89's slots and their drives</caption>
+      <image>https://raw.githubusercontent.com/tschak909/fujinet-go-h89-desktop/main/data/screenshots/3_preferences.png</image>
+    </screenshot>
   </screenshots>
   <releases>
     <!-- The CURRENT release templates its version from @PROJECT_VERSION@, so

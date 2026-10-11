@@ -1024,6 +1024,22 @@ static void on_destroy(GtkWidget *wgt, gpointer ud)
     g_win = NULL;
 }
 
+/* The Prompt tab is for typing: its input has the keyboard whenever the tab
+ * shows (otherwise the toolbar's first button would). */
+static void focus_prompt_if_shown(DbgWin *w)
+{
+    if (gtk_notebook_get_current_page(w->notebook) == 0)
+        gtk_widget_grab_focus(GTK_WIDGET(w->prompt_in));
+}
+
+static void on_switch_page(GtkNotebook *nb, GtkWidget *page, guint num, gpointer ud)
+{
+    (void)nb;
+    (void)page;
+    (void)num;
+    focus_prompt_if_shown(ud);
+}
+
 void h89_debugger_show(GtkWindow *parent, h89session *session)
 {
     DbgWin *w;
@@ -1032,6 +1048,7 @@ void h89_debugger_show(GtkWindow *parent, h89session *session)
 
     if (g_win) {
         gtk_window_present(g_win->win);
+        focus_prompt_if_shown(g_win);
         attach_and_refresh(g_win);
         return;
     }
@@ -1085,9 +1102,12 @@ void h89_debugger_show(GtkWindow *parent, h89session *session)
                 gtk_notebook_set_current_page(w->notebook, (int)i);
     }
 
+    g_signal_connect_after(w->notebook, "switch-page", G_CALLBACK(on_switch_page), w);
+
     g_win = w;
     w->timer = g_timeout_add(100, tick_refresh, w);
     gtk_window_present(w->win);
+    focus_prompt_if_shown(w);
     if (h89session_is_running(session))
         attach_and_refresh(w);
     else

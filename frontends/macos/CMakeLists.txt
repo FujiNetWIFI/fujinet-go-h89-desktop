@@ -17,6 +17,15 @@ enable_language(OBJC)
 # Info.plist.in's ${MACOSX_BUNDLE_ICON_FILE}. Neither alone is enough.
 set(H89_ICNS "${CMAKE_SOURCE_DIR}/data/icons/fujinet-go-h89.icns")
 
+# The licences, in the bundle's Resources: the GPL and the notices the
+# vendored code's licences ask a binary distribution to carry.
+configure_file("${CMAKE_SOURCE_DIR}/core/v89/LICENSE"
+               "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.VirtualH89" COPYONLY)
+set(H89_BUNDLE_LICENSES
+  "${CMAKE_SOURCE_DIR}/LICENSE"
+  "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.VirtualH89"
+  "${CMAKE_SOURCE_DIR}/core/v89/LICENSE.z80pack")
+
 add_executable(fujinet-go-h89-macos MACOSX_BUNDLE
   main.m
   AppDelegate.m
@@ -26,8 +35,9 @@ add_executable(fujinet-go-h89-macos MACOSX_BUNDLE
   SettingsWindow.m
   debugger/DebuggerWindow.m
   "${H89_ICNS}"
+  ${H89_BUNDLE_LICENSES}
 )
-set_source_files_properties("${H89_ICNS}" PROPERTIES
+set_source_files_properties("${H89_ICNS}" ${H89_BUNDLE_LICENSES} PROPERTIES
   MACOSX_PACKAGE_LOCATION "Resources")
 
 set_target_properties(fujinet-go-h89-macos PROPERTIES

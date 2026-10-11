@@ -18,6 +18,7 @@
 #include "test_tmpdir.h"
 #include "test_util.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -56,7 +57,8 @@ struct NoComputer: public Computer
     }
     AddressBus& getAddressBus() override
     {
-        return *(AddressBus*) nullptr;
+        // the card never asks for the bus; a test that gets here is wrong
+        std::abort();
     }
 };
 
