@@ -1,0 +1,75 @@
+fujinet-go-h89-desktop -- milestone log
+======================================
+
+The plan is the family's (see fujinet-go-adam-desktop/PORTING.md): one C API
+in core/, four native frontends, FujiNet in-process, one shared settings
+store, a native debugger everywhere, no panels visible at startup,
+clone-and-build CI. The core is VirtualH89 (mgarlanger, BSD-3), vendored
+and adapted in core/v89 with this app's own layer in core/machine.
+Nothing below is marked done on "it compiles".
+
+M0  scaffold                                                          [x]
+  [x] root CMakeLists (VERSION 0.1.0, FRONTEND switch, WITH_H89_ROMS OFF,
+      no_embedded_roms + check_exports registration, icon loop, CPack
+      DEB/RPM/TGZ), .gitignore, LICENSE, mingw toolchain
+  [x] cmake/Dependencies.cmake pins fujinet-firmware master b13c4ad7a (the
+      plan named c68e863, a side-branch commit; master has everything it
+      had -- FujiBus on RS232, TCP_NODELAY on BoIP -- and the sms build
+      script's patches apply to it unchanged)
+  [x] tools/fujinet: PC target RS232, BoIP 11512, web UI 11513
+  [x] icons: the family mark on the Heathkit nameplate -- black plate, gold
+      frame, cream stones, a cream rim on the black centre stone
+  verify: libfujinet built from master in one go; check_exports passes
+      (fujinet_desktop_* and fujinet_android_submit_sam_audio only)
+
+M1  emulator core, headless                                           [x]
+  [x] core/v89: VirtualH89 d1dea92 minus the GUIs, main, consoles, Z47,
+      disassembler, property reader, ROM and font arrays
+  [x] MachineContext: the wall clock and GPP listeners per machine
+  [x] Z80::runCycles + instruction/IO/memory hooks + IM 2; no SIGALRM
+  [x] Machine (the builder, from h89_config), IntrController (H37 + MMS
+      77316 together), H89Timer slices, H19Terminal, H19Render (444-29)
+  [x] Host: thread, 2 ms slices in 16 ms batches on a deadline ladder,
+      frame slot, run lock, key ring, warp (real time while FujiNet talks)
+  [x] romset: the ROM table by CRC; MAME's zips read with puff
+  [x] config: model, memory, P503, monitor, speed-up, SW401/402/501 (per
+      monitor, auto from the slots), P504-506 cards, every drive type,
+      MMS 77320, CP/NET; validation; key/value access
+  [x] h89_headless (scripted: --until/--type/--key/--disk/--screen/--ppm)
+  [x] Windows: compat_posix.h (fnmatch, ffs, bzero, mkdir, localtime_r,
+      O_BINARY)
+  verify: ctest 10/10 on Linux, and the same tests pass under Wine from the
+      mingw cross-build; MTR-90 reaches "H:" in 3 s; boot_smoke measures
+      500.0 slices/s
+
+M2  FujiNet card + H17 images                                         [~]
+  [x] FujiNetCard: 82C55 mode 2 at 0xD0-D3, portio.c's handshake, EN
+      reset/download mode, rawpipe (POSIX/Winsock, lazy reconnect)
+  [x] H17Image: raw (both side orders), H8D (HDOS volume from the label),
+      H17Disk v2 and the draft (captured sectors); write-back; blank images
+  [x] the sector layout measured from the captured HDOS disks (header sync
+      at 10, data sync at 32)
+  [x] drive API (h89drives.h), debounced write-back from the host thread
+  verify: HDOS 2.0 boots from its distribution disk to its date prompt
+      (hdos_boot test; it detects the console baud rate from a SPACE);
+      card test against a loopback peer, also under Wine
+  [ ] FUJIDEV against the real libfujinet (needs the session layer's
+      runtime loader and a disk holding fujinet-lib's test programs)
+
+M3  disks                                                             [ ]
+M4  session + GNOME + KDE                                             [ ]
+M5  debugger                                                          [ ]
+M6  Windows frontend                                                  [ ]
+M7  macOS frontend                                                    [ ]
+M8  packaging                                                         [ ]
+M9  CI/CD                                                             [ ]
+M10 polish, family audit                                              [ ]
+
+Notes / gotchas
+---------------
+- HDOS 2.0 detects the console's baud rate at boot: it puts the 8250 in
+  loopback, then tries 2400 baud and 9600 in turn until a SPACE arrives
+  cleanly. Press SPACE (twice: the first goes to the 2400 attempt).
+- The H17D draft's sector status is one byte in the published images, four
+  in the draft's text; both are read.
+- A 204800-byte H8D is DS40 unless hinted SS80: nothing in the file says.
