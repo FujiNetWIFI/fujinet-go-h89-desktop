@@ -6,6 +6,7 @@
 /// \author Douglas Miller, cloned from h37.cpp by Mark Garlanger
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   dumpDebug() includes the WD1797.
 ///   Frees its WD1797. No disks from the properties: the drives API
 ///   (core/machine/Drives.cpp) mounts them.
 ///
@@ -383,14 +384,7 @@ MMS77316::loadHead(bool load)
 std::string
 MMS77316::dumpDebug()
 {
-    std::string ret = PropertyUtil::sprintf(
-        "CTRL=%02x\n"
-   // "FDC-STS=%02x FDC-CMD=%02x\n"
-   // "FDC-TRK=%d FDC-SEC=%d FDC-DAT=%02x\n"
-        "DRQ=%d INTRQ=%d\n",
-        controlReg_m,
-        // statusReg_m, cmdReg_m,
-   // trackReg_m, sectorReg_m, dataReg_m,
-        drqRaised_m, intrqRaised_m);
-    return ret;
+    std::string ret = PropertyUtil::sprintf("MMS 77316: control %02x  DRQ %d INTRQ %d\n", controlReg_m,
+                                            drqRaised_m, intrqRaised_m);
+    return ret + (wd1797_m ? wd1797_m->debugState() : std::string());
 }

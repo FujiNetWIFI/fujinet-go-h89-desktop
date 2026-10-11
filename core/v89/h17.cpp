@@ -8,11 +8,14 @@
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
 ///   No save-on-destruction (images write back to their own files);
-///   the global h89 replaced by the machine context.
+///   the global h89 replaced by the machine context; dumpDebug() reports
+///   the controller's state for the debugger.
 ///
 
 
 #include "h17.h"
+
+#include <cstdio>
 
 #include "MachineContext.h"
 #include "computer.h"
@@ -534,4 +537,21 @@ H17::notification(unsigned int cycleCount)
             break;
     }
 
+}
+
+std::string
+H17::dumpDebug()
+{
+    static const char* const states[] = { "idle", "seeking sync", "reading", "writing" };
+    char buf[320];
+    snprintf(buf, sizeof buf,
+             "H-88-1: drive %d  motor %s  write gate %s  %s\n"
+             "        sync char %02X  fill %02X  receiver %02X%s%s  transmitter %02X%s\n"
+             "        byte %lu of the track\n",
+             (int) curDrive_m, motorOn_m ? "on" : "off", writeGate_m ? "on" : "off",
+             states[(int) state_m], syncChar_m, fillChar_m, receiverOutputRegister_m,
+             receiveDataAvail_m ? " (ready)" : "", syncCharacterReceived_m ? " SYNC" : "",
+             transmitterHoldingRegister_m, transmitterBufferEmpty_m ? " (empty)" : "",
+             curCharPos_m);
+    return buf;
 }

@@ -7,6 +7,7 @@
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
 ///   The global h89 replaced by the machine context.
+///   debugState() for the debugger's controller section.
 ///   Write Sector and Write Track on a write-protected disk end at once with
 ///   Write Protect (they waited forever). Write Track is implemented: from
 ///   one index pulse to the next, every byte the host supplies (00 and Lost
@@ -1414,4 +1415,21 @@ void
 WD1797::setCurrentDrive(GenericFloppyDrive* drive)
 {
     currentDrive_m = drive;
+}
+
+std::string
+WD1797::debugState() const
+{
+    static const char* const names[] = {
+        "restore", "seek", "step", "read sector", "write sector", "read address",
+        "read track", "write track", "force interrupt", "step done", "none",
+    };
+    char buf[256];
+    snprintf(buf, sizeof buf,
+             "WD1797: status %02X  track %u  sector %u  data %02X  command %02X (%s)\n"
+             "        %s density, side %u, DRQ %d INTRQ %d, %d index pulses\n",
+             statusReg_m, trackReg_m, sectorReg_m, dataReg_m, cmdReg_m,
+             names[(int) curCommand_m], doubleDensity_m ? "double" : "single", side_m,
+             drqRaised_m ? 1 : 0, intrqRaised_m ? 1 : 0, indexCount_m);
+    return buf;
 }

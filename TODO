@@ -101,7 +101,7 @@ M1b/M4  GNOME frontend                                                [~]
   verify: grim screenshots (Hyprland): MTR-90 prompt, typing B+RETURN,
       HDOS 2.0 booted from a disk named on the command line with the date
       pasted, H19 Keys, Preferences pages; desktop/metainfo validators
-  [ ] debugger window (M5)
+  [x] debugger window (M5)
 M4  KDE frontend                                                      [~]
   [x] Qt6 Widgets at GNOME parity: display, keys (KeyForward through the
       session's Qt table), menus (Machine, Drives rebuilt as it opens,
@@ -110,8 +110,22 @@ M4  KDE frontend                                                      [~]
       ROM setup, New Blank Disk, drag and drop, visual bell
   verify: HDOS 2.0 boots in it from the remembered disk, date pasted;
       desktop/metainfo validators
-  [ ] debugger window (M5)
-M5  debugger                                                          [ ]
+  [x] debugger window (M5)
+M5  debugger                                                          [x]
+  [x] engine (core/debugger/debugger.cpp) over VirtualH89's Z80 hooks:
+      attach stops, park on the machine thread, exec/read/write/in/out
+      breakpoints with conditions, step/over/out/run-to/ticks, trace ring,
+      symbols (z88dk .map, .sym, .noi), save (dis, ram, regs)
+  [x] the radix: hex, octal (377Q), Heath's split octal (041.000) in the
+      disassembly, the registers, memory and the prompt; the evaluator reads
+      every form
+  [x] H89 sections: terminal, memory map/GPP, timer & interrupts, H17,
+      Z-89-37/MMS 77316 WD1797s, MMS 77320, 8250s, FujiNet card
+  [x] GNOME and KDE windows: Prompt, CPU & Memory, Disassembly (click for a
+      breakpoint), Breakpoints, H89; F5/F7/F8/Shift+F8/F12
+  verify: debug test (own program, no ROMs): every breakpoint kind, the
+      steps, ticks, radix, prompt -- Linux and Wine; both windows stepping
+      the MTR-90 (screenshots)
 M6  Windows frontend                                                  [ ]
 M7  macOS frontend                                                    [ ]
 M8  packaging                                                         [ ]

@@ -68,10 +68,7 @@ class H17: public DiskController, public ClockUser, public GppListener
     {
         return "";
     }
-    std::string dumpDebug() override
-    {
-        return "";
-    }
+    std::string dumpDebug() override;
     void reset()  override
     {
     }

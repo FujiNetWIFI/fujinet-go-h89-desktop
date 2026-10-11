@@ -83,3 +83,8 @@ h89_add_test(sasi sasi_test)
 # close, open, read, search and delete a file in the host folder.
 h89_test(hostfile_bdos_test hostfile_bdos_test.cpp)
 h89_add_test(hostfile_bdos hostfile_bdos_test)
+
+# The debugger engine on the paced host with a program of our own (no Heath
+# ROMs): breakpoints of every kind, the steps, the radix, the prompt.
+h89_test(debug_test debug_test.c)
+h89_add_test(debug debug_test)

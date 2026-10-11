@@ -14,6 +14,7 @@
 #include "h89Types.h"
 
 /// \cond
+#include <string>
 #include <vector>
 /// \endcond
 
@@ -55,6 +56,9 @@ class WD1797: public ClockUser
     void waitForData();
 
     void setDoubleDensity(bool dd);
+
+    /// The registers and the command in progress, for the debugger.
+    std::string debugState() const;
 
   protected:
     WD1797(int baseAddr = 0);

@@ -65,10 +65,7 @@ class Z_89_37: public DiskController, public WD179xUserIf
     {
         return "";
     }
-    std::string dumpDebug() override
-    {
-        return "";
-    }
+    std::string dumpDebug() override;
     virtual void raiseIntrq() override;
     virtual void raiseDrq() override;
     virtual void lowerIntrq() override;

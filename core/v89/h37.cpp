@@ -4,11 +4,14 @@
 /// \author Mark Garlanger
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   dumpDebug() reports the interface and the WD1797.
 ///   Frees its WD1797. No disks from the properties: the drives API
 ///   (core/machine/Drives.cpp) mounts them.
 ///
 
 #include "h37.h"
+
+#include <cstdio>
 
 #include "logger.h"
 #include "wd1797.h"
@@ -402,4 +405,13 @@ int
 Z_89_37::getClockPeriod()
 {
     return 1000;
+}
+
+std::string
+Z_89_37::dumpDebug()
+{
+    char buf[160];
+    snprintf(buf, sizeof buf, "Z-89-37: control %02X  interface %02X  motor %s\n", controlReg_m,
+             interfaceReg_m, motorOn_m ? "on" : "off");
+    return std::string(buf) + (wd1797_m ? wd1797_m->debugState() : std::string());
 }
