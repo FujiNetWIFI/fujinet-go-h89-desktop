@@ -302,7 +302,10 @@ int h89w_import_roms(HWND owner)
 static void rom_setup(void)
 {
     char what[512], text[1400];
-    h89session_missing_roms(g_session, what, sizeof what);
+    /* asked for at start; a ROM file on the command line may have been
+     * imported since */
+    if (h89session_missing_roms(g_session, what, sizeof what) == 0)
+        return;
     snprintf(text, sizeof text,
              "FujiNet Go H89 does not come with the Heath ROMs. Import them from MAME's h89.zip "
              "and heath_tlb.zip, or from ROM image files: they are recognised by their contents "

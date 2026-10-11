@@ -28,10 +28,10 @@
 
 find_package(Git QUIET)
 
-# fujinet-firmware master (b13c4ad7a, 2026-10-10).
+# fujinet-firmware master (6b8187701, 2026-10-11).
 # Recorded in three places -- here and in both flatpak manifests
 # (build-aux/flatpak/*.yml).
-set(FUJINET_COMMIT "b13c4ad7a1f7aebf462c0e566b5580ec7410240d")
+set(FUJINET_COMMIT "6b8187701bf61e22e3ac63c70fcd4aff530702ee")
 set(FUJINET_URL "https://github.com/FujiNetWIFI/fujinet-firmware")
 
 # h89_provide_dependency(NAME <n> PATH <p> SENTINEL <file> OVERRIDE <VAR>

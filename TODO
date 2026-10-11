@@ -193,7 +193,17 @@ M10 polish, family audit                                              [~]
       sequences, ANSI keys, hold screen with XOFF/XON)
   [x] README: keys, cross-building Windows, "How this was verified" (with
       what is not), cutting a release
-  [ ] family audit against sms; memory note
+  [x] firmware re-pinned to master 6b8187701 (the WebDAV GET fix; the rest
+      is Pico-only), here and in both flatpak manifests
+  [x] family audit against sms: every file has its counterpart but the
+      SMS-only ones (Controllers windows -> H19 Keys, cartridge staging,
+      the SMS ROM patch); the same five workflows
+  [x] the release dry run (workflow_dispatch) built every artifact; the
+      Windows zip from it runs under Wine with its own fujinet.dll (BoIP
+      up), takes the ROM zips on the command line and reaches MTR-90's H:
+  [x] the first-run ROM prompt asks again only for what is still missing
+      (a ROM file on the command line could have been imported meanwhile)
+  [ ] memory note; the v0.1.0 tag (waits for the go-ahead)
 
 Notes / gotchas
 ---------------

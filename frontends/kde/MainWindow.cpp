@@ -385,7 +385,9 @@ void MainWindow::start()
 void MainWindow::showRomSetup()
 {
     char what[512];
-    h89session_missing_roms(m_session, what, sizeof what);
+    // asked for at start; a ROM file named on the command line or dropped
+    // may have been imported since
+    if (h89session_missing_roms(m_session, what, sizeof what) == 0) return;
     QMessageBox box(this);
     box.setWindowTitle(QStringLiteral("Import the H89's ROMs"));
     box.setText(QStringLiteral("<b>Import the H89's ROMs</b>"));

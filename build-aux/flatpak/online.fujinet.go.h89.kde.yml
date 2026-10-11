@@ -124,7 +124,7 @@ modules:
       # (the SENTINEL) already here.
       - type: git
         url: https://github.com/FujiNetWIFI/fujinet-firmware
-        commit: b13c4ad7a1f7aebf462c0e566b5580ec7410240d
+        commit: 6b8187701bf61e22e3ac63c70fcd4aff530702ee
         dest: third_party/fujinet-firmware
       # Same reasoning: the sandboxed build step has no network access, but
       # tools/fujinet/build-fujinet-desktop.sh needs mbedTLS 3.x and
