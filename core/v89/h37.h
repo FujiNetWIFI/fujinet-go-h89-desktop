@@ -3,6 +3,9 @@
 /// \date May 13, 2009
 /// \author Mark Garlanger
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   dumpDebug() is implemented, for the debugger's controller section.
+///
 
 #ifndef Z_89_37_H_
 #define Z_89_37_H_

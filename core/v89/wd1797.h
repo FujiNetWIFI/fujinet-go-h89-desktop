@@ -5,6 +5,10 @@
 /// \date Jan 30, 2016
 /// \author Douglas Miller, cloned from h37.h by Mark Garlanger
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later): see
+/// wd1797.cpp -- Write Track, debugState(), the status register's layout
+/// following the last command's type.
+///
 
 #ifndef WD1797_H_
 #define WD1797_H_
