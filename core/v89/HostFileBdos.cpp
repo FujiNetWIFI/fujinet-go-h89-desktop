@@ -6,7 +6,10 @@
 ///  \author Douglas Miller
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
-///   Portable: v89_fnmatch for fnmatch, O_BINARY on open().
+///   Portable: v89_fnmatch for fnmatch, O_BINARY on open(); the default
+///   root falls back to USERPROFILE when HOME is unset (Windows).
+///   Select Disk on a new drive folder no longer tests an uninitialised
+///   stat buffer.
 ///
 
 
@@ -97,7 +100,13 @@ HostFileBdos::HostFileBdos(PropertyUtil::PropertyMapT& props,
     }
     if (s.empty())
     {
-        s  = getenv("HOME");
+        // HOME is not set on Windows: USERPROFILE is its home
+        const char* home = getenv("HOME");
+        if (!home || !*home)
+        {
+            home = getenv("USERPROFILE");
+        }
+        s  = home && *home ? home : ".";
         s += "/HostFileBdos";
     }
     int rc = v89_mkdir(s.c_str(), 0777);
@@ -216,7 +225,7 @@ HostFileBdos::selectDisk(uint8_t* msgbuf, int len)
         rc = v89_mkdir(fileName, 0777);
         if (rc == 0)
         {
-            stb.st_mode |= S_IFDIR;
+            stb.st_mode = S_IFDIR;
         }
     }
     if (rc < 0 || !S_ISDIR(stb.st_mode))

@@ -8,6 +8,12 @@
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
 ///   Portable: O_BINARY on open(), ffs from compat_posix.h.
+///   Writes: the status phase after the data has its status byte ready (as
+///   after a read) and reports success (a previous error's status stayed);
+///   a multi-block write asks for the next block (REQ); Write Long is a
+///   write of the sector plus its 4 ECC bytes. Every command starts with a
+///   good status (a read's was whatever was left). REQUEST SENSE's bytes
+///   are a data-in phase, as SASI has it (they were sent with C/D set).
 ///
 
 #include "compat_posix.h"
@@ -423,6 +429,8 @@ GenericSASIDrive::ack(BYTE& dataIn,
             ctrl      &= ~ctl_Cmd_o_c;
             cmdIx      = 0;
             blockCount = 0;
+            stsBuf[0]  = 0;
+            stsBuf[1]  = 0;
             debugss(ssGenericSASIDrive, INFO, "Command: %02x %02x %02x %02x %02x %02x\n",
                     cmdBuf[0], cmdBuf[1], cmdBuf[2], cmdBuf[3], cmdBuf[4], cmdBuf[5]);
             // this further modifies 'ctrl' and sets curState.
@@ -597,7 +605,7 @@ GenericSASIDrive::startSense(BYTE& ctrl)
     senseIx  = 0;
     curState = SENSE;
     ctrl    &= ~ctl_Msg_o_c;
-    ctrl    |= ctl_Cmd_o_c;
+    ctrl    &= ~ctl_Cmd_o_c;
     ctrl    &= ~ctl_Out_o_c;
     ctrl    |= ctl_Req_o_c;
 }
@@ -741,7 +749,7 @@ GenericSASIDrive::processCmd(BYTE& dataIn,
             memcpy(senseBuf + 1, cmdBuf + 1, 3);
             dataLength = driveSecLen;
 
-            if (cmdBuf[0] == cmd_ReadLong_c)
+            if (cmdBuf[0] == cmd_WriteLong_c)
             {
                 dataLength += 4;
             }
@@ -820,6 +828,7 @@ GenericSASIDrive::processData(BYTE& dataIn,
     switch (cmdBuf[0])
     {
         case cmd_Write_c:
+        case cmd_WriteLong_c:
             off = ((((((cmdBuf[1] & 0x1f) << 8) | cmdBuf[2]) << 8) | cmdBuf[3]) +
                    blockCount) * driveSecLen;
 
@@ -831,9 +840,9 @@ GenericSASIDrive::processData(BYTE& dataIn,
             }
 
             lseek(driveFd, off + dataOffset, SEEK_SET);
-            e = write(driveFd, dataBuf, dataLength);
+            e = write(driveFd, dataBuf, driveSecLen);
 
-            if (e != dataLength)
+            if (e != driveSecLen)
             {
                 startError(ctrl, 0x94); // target sector not found + addr valid
                 ack(dataIn, dataOut, ctrl);
@@ -842,18 +851,23 @@ GenericSASIDrive::processData(BYTE& dataIn,
 
             if (++blockCount >= cmdBuf[4])
             {
+                stsBuf[0] = 0;
+                stsBuf[1] = 0;
                 startStatus(ctrl);
+                ack(dataIn, dataOut, ctrl);
                 break;
             }
 
+            // the next block
+            ctrl |= ctl_Req_o_c;
             break;
 
         case cmd_WriteSecBuf_c:
             // just leave sector buf with data for subsequent command(s)
+            stsBuf[0] = 0;
+            stsBuf[1] = 0;
             startStatus(ctrl);
-            break;
-
-        case cmd_WriteLong_c:
+            ack(dataIn, dataOut, ctrl);
             break;
 
         default:

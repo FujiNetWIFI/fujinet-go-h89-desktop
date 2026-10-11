@@ -66,7 +66,24 @@ M2  FujiNet card + H17 images                                         [x]
       slot -- fujiDevice.cpp only invalidates its host slot), not the pipe;
       fujibus_smoke: 140-byte adapter config, checksum good
 
-M3  disks                                                             [ ]
+M3  disks                                                             [~]
+  [x] SoftDisk: IMD / TD0 (read-only) / VirtualH89 sector + raw images in
+      one in-memory model, written back as themselves (an untouched IMD
+      byte for byte); replaces VirtualH89's three image classes
+  [x] WD1797 Write Track (index to index, Lost Data), TrackFormatter (FM
+      and MFM codes); per-track density; Read Address with real IDs;
+      Write Sector/Track refused at once on a protected disk
+  [x] runtime mount on the H37 and MMS 77316 (Drives.cpp), media probe
+      telling raw floppy from H17 raw images
+  [x] MMS 77320: unit files in data/sasi; VirtualH89's write path fixed
+      (status byte after a write, multi-block REQ, Write Long, sense as
+      data-in, a clean status per command)
+  [x] CP/NET HostFileBdos: HOME fallback on Windows, Select Disk's
+      uninitialised stat fixed
+  verify: soft_disk, sasi, hostfile_bdos tests (Linux and under Wine);
+      HDOS INIT on a blank .h8d, PIP a file to it, a fresh boot TYPEs it
+  [ ] CP/M FORMAT on IMD in the H37 and the MMS 77316 (needs CP/M boot
+      disks for them; none public found yet)
 M4  session + GNOME + KDE                                             [ ]
 M5  debugger                                                          [ ]
 M6  Windows frontend                                                  [ ]

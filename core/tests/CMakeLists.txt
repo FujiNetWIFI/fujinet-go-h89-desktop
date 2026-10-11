@@ -73,3 +73,13 @@ h89_add_test(hdos_boot hdos_boot_test)
 # the controller formatting, reading and writing a blank ImageDisk.
 h89_test(soft_disk_test soft_disk_test.cpp)
 h89_add_test(soft_disk soft_disk_test)
+
+# The MMS 77320 and its Xebec drives through the card's ports: select,
+# command, data both ways, status, sense; the unit file across controllers.
+h89_test(sasi_test sasi_test.cpp)
+h89_add_test(sasi sasi_test)
+
+# CP/NET's host-folder server through its message interface: make, write,
+# close, open, read, search and delete a file in the host folder.
+h89_test(hostfile_bdos_test hostfile_bdos_test.cpp)
+h89_add_test(hostfile_bdos hostfile_bdos_test)
