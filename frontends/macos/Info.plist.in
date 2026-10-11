@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>FujiNet Go H89</string>
+  <key>CFBundleDisplayName</key>
+  <string>FujiNet Go H89</string>
+  <key>CFBundleIdentifier</key>
+  <string>online.fujinet.go.h89.macos</string>
+  <key>CFBundleExecutable</key>
+  <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+  <key>CFBundleIconFile</key>
+  <string>${MACOSX_BUNDLE_ICON_FILE}</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${PROJECT_VERSION}</string>
+  <key>CFBundleVersion</key>
+  <string>${PROJECT_VERSION}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.3</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 Thomas Cherryhomes. GPL-3.0-or-later.</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <!-- The extensions that can only mean an H89 disk. The VirtualH89
+       sector and raw images (.mmsdisk, .logdisk, .rawfloppy, .h17raw)
+       open from the app's own panels and by drag and drop; claiming them
+       here would add little. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>H17 hard-sectored disk image</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>h8d</string>
+        <string>h17</string>
+        <string>h17disk</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Soft-sectored disk image</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>imd</string>
+        <string>td0</string>
+      </array>
+    </dict>
+  </array>
+  <!-- The FujiNet web UI is plain HTTP on loopback. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+</dict>
+</plist>

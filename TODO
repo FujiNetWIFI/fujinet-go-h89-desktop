@@ -144,7 +144,16 @@ M6  Windows frontend                                                  [x]
       H19 Keys, Settings pages, debugger stepping and its prompt in split
       octal (screenshots). Not driven from here: modified shortcuts (Wine's
       Wayland driver takes no synthetic modifiers)
-M7  macOS frontend                                                    [ ]
+M7  macOS frontend                                                    [~]
+  [x] AppKit at parity: CVDisplayLink display (4:3 or square, smoothing,
+      visual bell), status line (disk and link lights), menus (Machine,
+      Drives rebuilt as it opens, Edit, View, FujiNet, Window, Help) with
+      Command shortcuts so Control stays the H19's, ROM setup, New Blank
+      Disk, drag and drop, Finder's Open With (CFBundleDocumentTypes:
+      h8d, h17, h17disk, imd, td0), FujiNet console log
+  [x] Settings (six tabs), H19 Keys window, debugger window
+  [ ] verify: macos.yml green on arm64 and x86_64 (written on Linux; CI is
+      the first compile)
 M8  packaging                                                         [ ]
 M9  CI/CD                                                             [ ]
 M10 polish, family audit                                              [ ]
