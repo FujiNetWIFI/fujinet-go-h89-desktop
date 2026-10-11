@@ -16,6 +16,9 @@
  *   --screen           print the screen
  *   --ppm FILE         write the H19's picture
  *   --disk SPEC        insert a disk: h17:1=PATH, h37:2=PATH[:ro], ...
+ *   --debug CMD        (h89_session_run) stop the machine, run a debugger
+ *                      prompt command -- fdc, h17, regs, card, dis pc ... --
+ *                      print what it says, and let the machine run on
  *
  * Machine options (before the steps): --roms DIR (default $H89_TEST_ROM_DIR,
  * then tools/roms), --monitor FILE, --boip HOST:PORT, --warp,
@@ -41,6 +44,7 @@
 #include "h89roms.h"
 #include "host.h"
 #ifdef H89_HEADLESS_SESSION
+#include "h89debug.h"
 #include "h89session.h"
 #endif
 
@@ -279,7 +283,8 @@ static void usage(void)
             "usage: h89_headless [--roms DIR] [--monitor FILE] [--boip HOST:PORT] [--warp]\n"
             "                    [--timeout S] [--set KEY=VALUE]...\n"
             "                    [--until TEXT | --prompt TEXT | --type TEXT | --key NAME |\n"
-            "                     --wait MS | --screen | --ppm FILE | --disk SPEC]...\n");
+            "                     --wait MS | --screen | --ppm FILE | --disk SPEC |\n"
+            "                     --debug CMD (h89_session_run)]...\n");
 }
 
 int main(int argc, char **argv)
@@ -509,6 +514,20 @@ int main(int argc, char **argv)
                 rc = 1;
             }
         }
+#ifdef H89_HEADLESS_SESSION
+        else if (!strcmp(a, "--debug") && v)
+        {
+            static char out[65536];
+            h89debug *d = h89session_debugger(sess);
+            i++;
+            h89debug_attach(d);
+            h89debug_command(d, v, out, sizeof out);
+            h89debug_detach(d);
+            printf("---- %s ----\n%s%s----------------\n", v, out,
+                   out[0] && out[strlen(out) - 1] != '\n' ? "\n" : "");
+            fflush(stdout);
+        }
+#endif
         else
         {
             usage();

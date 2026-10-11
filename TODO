@@ -66,7 +66,7 @@ M2  FujiNet card + H17 images                                         [x]
       slot -- fujiDevice.cpp only invalidates its host slot), not the pipe;
       fujibus_smoke: 140-byte adapter config, checksum good
 
-M3  disks                                                             [~]
+M3  disks                                                             [x]
   [x] SoftDisk: IMD / TD0 (read-only) / VirtualH89 sector + raw images in
       one in-memory model, written back as themselves (an untouched IMD
       byte for byte); replaces VirtualH89's three image classes
@@ -82,8 +82,22 @@ M3  disks                                                             [~]
       uninitialised stat fixed
   verify: soft_disk, sasi, hostfile_bdos tests (Linux and under Wine);
       HDOS INIT on a blank .h8d, PIP a file to it, a fresh boot TYPEs it
-  [ ] CP/M FORMAT on IMD in the H37 and the MMS 77316 (needs CP/M boot
-      disks for them; none public found yet)
+  [x] CP/M (SEBHC's distributions, tools/disks/fetch-disks.sh): 2.2.04 boots
+      from the H17 and CONFIGURs itself; MOVCPM17 64 * + SYSGEN write a 64K
+      system to the boot tracks; 2.2.04 with BIOS-80 boots from ImageDisk on
+      the Z-89-37
+  [x] fixed on the way: the session left 444-19 unmapped without an H-88-1
+      (MTR-90 boots the Z-89-37 through its routines: the boot slid through
+      zeros); it is CPU-board equipment, mapped whenever imported and needed
+      for any floppy controller. The WD1797's idle status kept Index in bit
+      1 after Type II/III commands, where it is DRQ: FORMAT read it as an
+      error after the first track
+  [x] h89_session_run --debug CMD: a debugger command mid-script
+  verify: tools/e2e/cpm-h37-format.sh (FORMAT an empty IMD on the Z-89-37,
+      PIP to it, a fresh session STATs it), tools/e2e/cpm-fujidev.sh (64K
+      CP/M on the H17 runs FUJIDEV: 23/24, the firmware's known failure);
+      soft_disk checks the idle status bits after Type I and Type III.
+      The MMS 77316 has no public CP/M boot disk: only its tests cover it
 M1b/M4  GNOME frontend                                                [~]
   [x] display (640x500, 4:3 or square, smooth), keyboard through the
       session's table (CTRL is the H19's; app shortcuts are CTRL+SHIFT),

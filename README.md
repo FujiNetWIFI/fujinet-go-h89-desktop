@@ -152,9 +152,18 @@ The family's pairs: Astrocade 11500/1, ColecoVision 11502/3, Atari 2600
   been run on a Windows desktop.
 - **macOS.** CI is the only place it has been compiled and tested, on Apple
   Silicon and Intel. It has never run on a Mac yet.
-- **Not yet verified.** CP/M has not been booted, because no CP/M image for
-  the H89 has turned up yet. The H37 and MMS 77316 have only been tested
-  through `soft_disk` and the controller code; neither has run under an OS.
+- **CP/M end to end.** These use the Society of Eight-Bit Heath
+  Computerists' distributions, fetched with `tools/disks/fetch-disks.sh`:
+  - `tools/e2e/cpm-fujidev.sh`: CP/M 2.2.04 boots from the H17 and
+    configures itself; MOVCPM17 and SYSGEN write a 64K system to the boot
+    tracks; FUJIDEV under it passes 23 of 24, with the same firmware
+    failure as under HDOS.
+  - `tools/e2e/cpm-h37-format.sh`: CP/M 2.2.04 with BIOS-80 boots from
+    ImageDisk on the Z-89-37 and FORMATs an empty ImageDisk (80 tracks of
+    16 × 256 MFM, through the WD1797's Write Track). PIP copies a file onto
+    it, and a fresh session reads the file back.
+- **Not yet verified.** The MMS 77316 has run only its tests: no CP/M boot
+  disk for it is public.
 
 ## Cutting a release
 

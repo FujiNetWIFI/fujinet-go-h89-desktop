@@ -370,6 +370,10 @@ class WD1797: public ClockUser
 
     bool            doubleDensity_m;
     bool            immediateInterruptSet_m;
+    /// The status register holds Type I bits (Index, Track 0, Write
+    /// Protect): after a Type I command, a reset, or a Force Interrupt with
+    /// nothing running. After a Type II or III command bit 1 is DRQ.
+    bool            typeIStatus_m;
 
     void updateStatusTypeI(GenericFloppyDrive* drive);
     void transferData(int data);

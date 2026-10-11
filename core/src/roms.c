@@ -147,12 +147,16 @@ int h89session_import_roms(h89session *s, const char *path, char *msg, int msgsz
 int h89session_missing_roms(h89session *s, char *what, int whatsz)
 {
     h89_config cfg;
-    int missing = 0, has_h17 = 0;
+    int missing = 0, has_disk = 0;
     char buf[512] = "";
 
     h89session_get_config(s, &cfg);
+    /* 444-19 is on the CPU board, and the monitors' disk boots call into
+     * it -- MTR-90 boots the Z-89-37 through its routines -- so any floppy
+     * controller needs it */
     for (int i = 0; i < H89_SLOTS; i++)
-        has_h17 |= cfg.slot[i] == H89_CARD_H17;
+        has_disk |= cfg.slot[i] == H89_CARD_H17 || cfg.slot[i] == H89_CARD_H37 ||
+                    cfg.slot[i] == H89_CARD_MMS77316;
 
 #define NEED(file, label)                                                         \
     do {                                                                          \
@@ -173,8 +177,8 @@ int h89session_missing_roms(h89session *s, char *what, int whatsz)
         snprintf(l, sizeof l, "the monitor %s", label);
         NEED(cfg.monitor, l);
     }
-    if (has_h17)
-        NEED("2716_444-19_h17.u520", "the H-17 controller ROM (444-19)");
+    if (has_disk)
+        NEED("2716_444-19_h17.u520", "the H-17 ROM (444-19)");
     NEED("2716_444-29_h19font.u420", "the H19 character ROM (444-29)");
 #undef NEED
 

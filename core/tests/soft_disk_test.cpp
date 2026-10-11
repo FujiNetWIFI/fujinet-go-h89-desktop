@@ -586,12 +586,34 @@ testWd1797()
     // Restore, then format track 0 in MFM: 9 x 512
     BYTE st = f.run(0x00);
     CHECK((st & 0x05) == 0x04);   // track 0, not busy
+    // idle after a Type I command, bit 1 is the index hole
+    {
+        bool bit1 = false;
+        for (int i = 0; i < 30000; ++i)
+        {
+            f.tick();
+            bit1 |= (f.wd.in(0) & 0x02) != 0;
+        }
+        CHECK(bit1);
+    }
     f.wd.setDoubleDensity(true);
     std::vector<uint8_t> s = formatStream(true, 0, 0, 9, 2, 0xe5);
     st                     = f.run(0xf0, &s);
     CHECK_EQ_INT(st & 0xfc, 0);
     CHECK(d->trackFormatted(0, 0) && d->densityMatches(true, 0, 0));
     CHECK(d->dirty());
+
+    // idle after a Type III command, bit 1 is DRQ, not the index hole: it
+    // stays 0 through a whole revolution (CP/M's FORMAT checks it)
+    {
+        bool bit1 = false;
+        for (int i = 0; i < 30000; ++i)
+        {
+            f.tick();
+            bit1 |= (f.wd.in(0) & 0x02) != 0;
+        }
+        CHECK(!bit1);
+    }
 
     // every sector reads back
     for (int sec = 1; sec <= 9; ++sec)

@@ -6,7 +6,10 @@
 #
 # The HDOS 2.0 distribution disks are Mark Garlanger's captures, published
 # at heathkit.garlanger.com and placed in the public domain. They are in the
-# H17Disk draft format: every sector as it was read off the disk.
+# H17Disk draft format: every sector as it was read off the disk. CP/M
+# 2.2.04 (H17) and CP/M 2.2.0X with BIOS-80 (Z-89-37) come from the Society
+# of Eight-Bit Heath Computerists' archive, as zips, which are unpacked
+# beside them.
 #
 # Each download is checked against disks.lst (sha256).
 #
@@ -29,6 +32,7 @@ while read -r sum name url; do
     dest="${OUT}/${name}"
     if [[ -f "${dest}" && "$(sha "${dest}")" == "${sum}" ]]; then
         echo "have ${name}"
+        [[ "${name}" == *.zip ]] && unzip -oq "${dest}" -d "${OUT}"
         continue
     fi
     echo "fetching ${name}"
@@ -40,4 +44,5 @@ while read -r sum name url; do
         exit 1
     fi
     mv "${dest}.part" "${dest}"
+    [[ "${name}" == *.zip ]] && unzip -oq "${dest}" -d "${OUT}"
 done < "${HERE}/disks.lst"

@@ -14,6 +14,9 @@
 ///   Data where it is late) goes to the media, which parses it
 ///   (GenericFloppyDrive::formatTrack). Read/Write Sector check the ID
 ///   fields in the controller's density.
+///   The idle status register keeps Index and Write Protect up to date only
+///   while it holds Type I status: after a Type II/III command bit 1 is DRQ,
+///   and an index pulse there read as an error (CP/M's FORMAT gave up).
 ///
 
 #include "wd1797.h"
@@ -72,7 +75,8 @@ WD1797::WD1797(int baseAddr): ClockUser(),
                               cycleCount_m(0),
                               formattingState_m(fs_none),
                               doubleDensity_m(false),
-                              immediateInterruptSet_m(false)
+                              immediateInterruptSet_m(false),
+                              typeIStatus_m(true)
 {
 
 }
@@ -116,6 +120,7 @@ WD1797::reset(void)
     cmdIV_notReadyToReady   = false;
     cmdIV_indexPulse        = false;
     immediateInterruptSet_m = false;
+    typeIStatus_m           = true;
 
     curNotification         = &WD1797::noneNotification;
     stepDirection_m         = dir_out;
@@ -251,6 +256,9 @@ WD1797::processCmd(BYTE cmd)
     // set Busy flag
     statusReg_m = stat_Busy_c;
     debugss(ssWD1797, INFO, "Setting busy flag\n")
+
+    // the status register's layout follows the command type
+    typeIStatus_m = (cmd & 0x80) == 0x00;
 
     if ((cmd & 0x80) == 0x00)
     {
@@ -463,7 +471,9 @@ WD1797::processCmdTypeIV(BYTE cmd)
     }
     else if (currentDrive_m)
     {
-        // no Command running, update status.
+        // no Command running: the status becomes Type I status
+        typeIStatus_m = true;
+        // update status.
         // try more-surgical repair of status register.
         statusReg_m &= ~stat_SeekError_c;
         statusReg_m &= ~stat_CRCError_c;
@@ -669,7 +679,9 @@ WD1797::noneNotification(unsigned int cycleCount)
         statusReg_m |= stat_NotReady_c;
     }
 
-    if (currentDrive_m)
+    // Index and Write Protect are Type I status; after a Type II/III
+    // command bit 1 is DRQ and must not follow the index hole
+    if (currentDrive_m && typeIStatus_m)
     {
         if (currentDrive_m->isWriteProtect())
         {

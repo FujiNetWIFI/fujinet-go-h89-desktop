@@ -180,7 +180,7 @@ static int host_up(struct h89session *s)
     uint8_t *mon = NULL, *h17 = NULL, *font = NULL;
     size_t mon_size = 0, h17_size = 0, font_size = 0;
     char why[256];
-    int rc, has_h17 = 0;
+    int rc;
 
     h89session_get_config(s, &cfg);
     if (!h89_config_validate(&cfg, why, sizeof why)) {
@@ -191,13 +191,12 @@ static int host_up(struct h89session *s)
         session_set_error(s, "Import the H89 ROMs first: this machine needs %s.", why);
         return -1;
     }
-    for (int i = 0; i < H89_SLOTS; i++)
-        has_h17 |= cfg.slot[i] == H89_CARD_H17;
-
     mon = roms_load(s, h89_rom_find_file(cfg.monitor), &mon_size);
     font = roms_load(s, h89_rom_find_file("2716_444-29_h19font.u420"), &font_size);
-    if (has_h17)
-        h17 = roms_load(s, h89_rom_find_file("2716_444-19_h17.u520"), &h17_size);
+    /* 444-19 sits on the CPU board (U520), not on the H-88-1: whenever it
+     * is imported it is at 0x1800, card or no card -- MTR-90 boots the
+     * Z-89-37 through its routines too */
+    h17 = roms_load(s, h89_rom_find_file("2716_444-19_h17.u520"), &h17_size);
 
     memset(&o, 0, sizeof o);
     o.config = cfg;
