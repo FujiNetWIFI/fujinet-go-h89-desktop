@@ -126,7 +126,24 @@ M5  debugger                                                          [x]
   verify: debug test (own program, no ROMs): every breakpoint kind, the
       steps, ticks, radix, prompt -- Linux and Wine; both windows stepping
       the MTR-90 (screenshots)
-M6  Windows frontend                                                  [ ]
+M6  Windows frontend                                                  [x]
+  [x] Win32, no toolkit: StretchDIBits display on a present thread, menus
+      (Machine, Drives rebuilt as it opens, Edit, View, FujiNet, Help),
+      status bar with the disk and link lights, keys (WM_KEYDOWN specials,
+      WM_CHAR text, Ctrl+Shift app shortcuts), clipboard copy and paste,
+      fullscreen, drag and drop and a file on the command line, ROM setup,
+      New Blank Disk, FujiNet console log
+  [x] Settings in six tabs (SW501 rows rebuilt per monitor), H19 Keys window,
+      debugger (Prompt, CPU & Memory, Disassembly, Breakpoints, H89; F5/F7/
+      F8/Shift+F8/F12; radix)
+  [x] per-monitor DPI aware: layouts in 96-DPI units through h89w_px, the
+      system message font, a scaled Consolas
+  verify: mingw cross-build; the tests under Wine (fujibus_smoke skips: no
+      libfujinet in the cross build); the app under Wine at 192 DPI: MTR-90
+      prompt, HDOS 2.0 booted from a disk on the command line and CAT,
+      H19 Keys, Settings pages, debugger stepping and its prompt in split
+      octal (screenshots). Not driven from here: modified shortcuts (Wine's
+      Wayland driver takes no synthetic modifiers)
 M7  macOS frontend                                                    [ ]
 M8  packaging                                                         [ ]
 M9  CI/CD                                                             [ ]
