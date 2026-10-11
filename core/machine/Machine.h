@@ -47,6 +47,7 @@ class MMS77316;
 class MMS77320;
 class MemoryDecoder;
 class NMIPort;
+class SingleStep;
 class SystemMemory8K;
 class Z80;
 class Z_89_37;
@@ -114,6 +115,10 @@ class Machine: public Computer
     H89Timer&           timer()
     {
         return *timer_m;
+    }
+    SingleStep&         singleStep()
+    {
+        return *singleStep_m;
     }
     IntrController&     intr()
     {
@@ -208,6 +213,7 @@ class Machine: public Computer
     std::shared_ptr<MemoryDecoder>         memory_m;
     std::unique_ptr<GeneralPurposePort>    gpp_m;
     std::unique_ptr<H89Timer>              timer_m;
+    std::unique_ptr<SingleStep>            singleStep_m;
     std::unique_ptr<NMIPort>               nmi1_m, nmi2_m;
     std::unique_ptr<INS8250>               console_m;
     std::unique_ptr<H19Terminal>           terminal_m;

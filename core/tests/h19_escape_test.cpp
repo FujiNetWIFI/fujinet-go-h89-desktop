@@ -228,6 +228,102 @@ main()
     }
 
     {
+        // ANSI mode (ESC <): the manual's CSI sequences
+        Rig r;
+        r.send("\033<");
+        CHECK(r.term.modes().ansi);
+        r.send("\033[5;10HX");                 // CUP
+        CHECK_EQ_INT(r.term.cursorRow(), 4);
+        CHECK(r.row(4) == "         X");
+        r.send("\033[H\033[2B\033[3C*");      // home, down 2, right 3
+        CHECK(r.row(2) == "   *");
+        r.send("\033[A\033[D\033[7mR\033[m"); // up, left; reverse on and off
+        CHECK_EQ_INT(r.term.cell(3, 1), 0x80 | 'R');
+        r.send("\033[10ma\033[11m");          // graphics
+        CHECK_EQ_INT(r.term.cell(4, 1), 0x01);
+        r.send("\033[3;1HABCDEF\033[3;3H\033[K"); // EL to end
+        CHECK(r.row(2) == "AB");
+        r.send("\033[3;1H\033[P");            // DCH
+        CHECK(r.row(2) == "B");
+        r.send("\033[3;1H\033[4hZ\033[4l");   // IRM
+        CHECK(r.row(2) == "ZB");
+        r.send("\033[3;1H\033[2L");           // IL 2
+        CHECK(r.row(2).empty() && r.row(3).empty());
+        CHECK(r.row(4) == "ZB");
+        r.send("\033[2M");                     // DL 2
+        CHECK(r.row(2) == "ZB");
+        r.send("\033[7;20H\033[s\033[H\033[u\033[6n"); // save, restore, CPR
+        CHECK(r.drain() == "\033[7;20R");
+        r.send("\033[>5h");                    // Heath mode 5: cursor off
+        CHECK(!r.term.cursorVisible());
+        r.send("\033[>5;1l");
+        CHECK(r.term.cursorVisible());
+        r.send("\033[30;99H");                 // a line too high stays; column clamps
+        CHECK_EQ_INT(r.term.cursorRow(), 6);
+        CHECK_EQ_INT(r.term.cursorCol(), 79);
+        r.send("\033Y  ");                     // Heath DCA is not ANSI: ignored
+        CHECK_EQ_INT(r.term.cursorRow(), 6);
+
+        // the keys' ANSI codes
+        r.term.postKey(H89K_F1, false);
+        r.term.postKey(H89K_UP, false);
+        r.term.postKey(H89K_ERASE, true);
+        r.send("\033=");
+        r.term.postKey(H89K_KP5, false);
+        CHECK(r.drain() == "\033OS\033[A\033[2J\033Ou");
+
+        // ED 2 clears and homes; ESC [ ? 2 h goes back to Heath mode
+        r.send("\033[2J");
+        CHECK(r.row(2).empty());
+        CHECK_EQ_INT(r.term.cursorRow(), 0);
+        r.send("\033[?2h\033Y%(X");
+        CHECK(!r.term.modes().ansi);
+        CHECK(r.row(5) == "        X");
+    }
+
+    {
+        // Heath keys: SHIFT+ERASE clears, IC toggles insert character mode
+        Rig r;
+        r.term.postKey(H89K_ERASE, false);
+        r.term.postKey(H89K_ERASE, true);
+        r.term.postKey(H89K_IC, false);
+        CHECK(r.drain() == "\033J\033E\033@");
+        r.send("\033@");
+        r.term.postKey(H89K_IC, false);
+        CHECK(r.drain() == "\033O");
+    }
+
+    {
+        // hold-screen mode: the line holds before a scroll, with XOFF; SCROLL
+        // lets one line through, SHIFT+SCROLL a page, then XON
+        Rig r;
+        r.send("\033[");
+        CHECK(r.term.modes().holdScreen);
+        for (int i = 0; i < 24; ++i)
+        {
+            char line[16];
+            snprintf(line, sizeof line, "%sL%d", i ? "\r\n" : "", i);
+            r.send(line);
+        }
+        CHECK(r.row(23) == "L23");
+        r.send("\r\nL24\r\nL25");          // the LF after L23 would scroll
+        CHECK(r.row(0) == "L0");
+        CHECK(r.term.modes().held > 0);
+        CHECK(r.drain() == "\023");            // XOFF
+        r.term.postKey(H89K_SCROLL, false);    // one line: L24 in, then held again
+        CHECK(r.drain().empty());
+        CHECK(r.row(0) == "L1");
+        CHECK(r.row(23) == "L24");
+        CHECK(r.term.modes().held > 0);
+        r.term.postKey(H89K_SCROLL, true);     // a page: the rest, then XON
+        CHECK(r.drain() == "\021");
+        CHECK(r.row(23) == "L25");
+        CHECK_EQ_INT((int) r.term.modes().held, 0);
+        r.send("\033\\");                    // ESC \ : out of hold-screen mode
+        CHECK(!r.term.modes().holdScreen);
+    }
+
+    {
         // screen text, graphics characters as Unicode
         Rig r;
         r.send("AB\033Fa\033G");

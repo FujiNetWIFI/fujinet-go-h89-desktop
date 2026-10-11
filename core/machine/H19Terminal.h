@@ -18,7 +18,13 @@
  *     and pasting never overrun it;
  *   - the bell and the key click are reported for the host's audio;
  *   - SW401's baud rate sets the character time; SW402 follows MAME's
- *     switch polarity (bit 1 set = NO key click).
+ *     switch polarity (bit 1 set = NO key click);
+ *   - ANSI mode (ESC <, or SW402 at power-up): the CSI sequences of the
+ *     Operation Manual's appendix (595-2284-05, pp. 81-90), and the keys'
+ *     ANSI codes;
+ *   - hold-screen mode holds the line before a scroll and sends XOFF, as
+ *     the manual describes it; SCROLL lets one line through, SHIFT+SCROLL a
+ *     page, and XON follows once nothing is held.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -108,11 +114,12 @@ class H19Terminal: public SerialPortDevice, public ClockUser
     {
         bool offline, holdScreen, keypadShifted, altKeypad, keyboardDisabled,
              reverseVideo, graphics, insert, wrapEOL, autoLF, autoCR, noKeyClick,
-             ansiRequested;
+             ansi;
         int  escState;
         BYTE sw401, sw402;
         unsigned baud;
         size_t queued;
+        size_t held;          ///< characters held by hold-screen mode
     };
     Modes modes() const;
 
@@ -141,6 +148,7 @@ class H19Terminal: public SerialPortDevice, public ClockUser
         DCA_2,
         SetMode,
         ResetMode,
+        Csi,        ///< ANSI mode: ESC [ (parameters) final
     };
 
     // keyboard
@@ -175,6 +183,18 @@ class H19Terminal: public SerialPortDevice, public ClockUser
     void transmitLine25();
     void transmitPage();
     void bell();
+
+    // ANSI mode
+    void processAnsiEscape(BYTE ch);
+    void processCsi(BYTE ch);
+    void executeCsi(BYTE final);
+    int  csiParam(unsigned i, int def) const;
+    // ESC x / ESC y and ESC [ > Ps h / l: the Heath modes 1-9
+    void setHeathMode(int n, bool on);
+
+    // hold-screen mode: may the screen scroll up now?
+    bool mayScroll();
+    void releaseHeld();
     bool onLine25() const
     {
         return posY_m == rows_c - 1;
@@ -214,7 +234,19 @@ class H19Terminal: public SerialPortDevice, public ClockUser
     bool      offline_m;
     bool      cursorBlock_m;
     bool      cursorOff_m;
-    bool      ansiRequested_m;
+    bool      ansiMode_m;
+
+    // an ANSI control sequence being received
+    static const unsigned csiMax_c = 16;
+    char      csiPrivate_m;          ///< '>' or '?' (the Heath extensions), or 0
+    int       csiParam_m[csiMax_c];
+    unsigned  csiCount_m;
+
+    // hold-screen mode: what waits for SCROLL, and how many lines it allows
+    static const size_t heldMax_c = 4096;
+    std::deque<BYTE> held_m;
+    unsigned  scrollCredit_m;
+    bool      blocked_m;
 
     // the line back to the H89
     std::deque<BYTE> toSend_m;

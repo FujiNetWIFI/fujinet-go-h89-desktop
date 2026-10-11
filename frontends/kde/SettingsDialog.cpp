@@ -323,7 +323,7 @@ int SettingsDialog::run(QWidget *parent, h89session *session, std::function<void
     sw402f->addRow(bitBox("Wrap at the end of a line", &cfg.sw402, 0x04));
     sw402f->addRow(bitBox("Line feed on carriage return", &cfg.sw402, 0x08));
     sw402f->addRow(bitBox("Carriage return on line feed", &cfg.sw402, 0x10));
-    sw402f->addRow(bitBox("ANSI mode (asked for; the H19 here speaks Heath)", &cfg.sw402, 0x20));
+    sw402f->addRow(bitBox("ANSI mode at power-up (Heath mode otherwise)", &cfg.sw402, 0x20));
     sw402f->addRow(bitBox("Keypad shifted", &cfg.sw402, 0x40));
     sw402f->addRow(bitBox("50 Hz refresh", &cfg.sw402, 0x80));
     swv->addWidget(sw402);

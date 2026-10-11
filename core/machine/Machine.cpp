@@ -21,6 +21,7 @@
 #include "MemoryDecoder.h"
 #include "NMIPort.h"
 #include "ROM.h"
+#include "SingleStep.h"
 #include "SystemMemory8K.h"
 #include "h-17-1.h"
 #include "h-17-4.h"
@@ -301,6 +302,8 @@ Machine::build(const MachineRoms& roms, const MachineOptions& opts)
     ab_m.reset(new AddressBus(intr_m.get()));
     cpu_m->setAddressBus(ab_m.get());
     timer_m.reset(new H89Timer(this, cpu_m.get()));
+    singleStep_m.reset(new SingleStep(this));
+    cpu_m->setM1Hook(&SingleStep::m1Hook, singleStep_m.get());
 
     nmi1_m.reset(new NMIPort(cpu_m.get(), NMI_BaseAddress_1_c, 2));
     nmi2_m.reset(new NMIPort(cpu_m.get(), NMI_BaseAddress_2_c, 2));
@@ -359,6 +362,11 @@ Machine::~Machine()
     terminal_m.reset();
     nmi1_m.reset();
     nmi2_m.reset();
+    if (cpu_m)
+    {
+        cpu_m->setM1Hook(nullptr, nullptr);
+    }
+    singleStep_m.reset();
     timer_m.reset();
     gpp_m.reset();
     ab_m.reset();
@@ -378,6 +386,7 @@ Machine::reset()
     ab_m->reset();
     io_m->reset();
     timer_m->reset();
+    singleStep_m->reset();
     // the GPP's reset (in io_m) wrote 0 to it, which only notifies on a
     // change: put every listener back to the power-on state explicitly
     GppListener::notifyListeners(0, 0xff);

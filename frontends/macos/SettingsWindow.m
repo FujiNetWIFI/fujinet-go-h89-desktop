@@ -678,7 +678,7 @@ static void show_row(H89Row *r, BOOL on)
     static const struct { const char *name; uint8_t mask; } sw402[] = {
         { "Block cursor", 0x01 }, { "No key click", 0x02 }, { "Wrap at the end of a line", 0x04 },
         { "Line feed on carriage return", 0x08 }, { "Carriage return on line feed", 0x10 },
-        { "ANSI mode (asked for)", 0x20 }, { "Keypad shifted", 0x40 }, { "50 Hz refresh", 0x80 },
+        { "ANSI mode at power-up", 0x20 }, { "Keypad shifted", 0x40 }, { "50 Hz refresh", 0x80 },
     };
     H89Row *r;
     CGFloat y = 12;

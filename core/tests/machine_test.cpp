@@ -14,6 +14,7 @@
 #include "IntrController.h"
 #include "Machine.h"
 #include "MemoryDecoder.h"
+#include "SingleStep.h"
 #include "h89-io.h"
 #include "h89-timer.h"
 #include "test_util.h"
@@ -268,6 +269,52 @@ testBadConfig()
 
 }
 
+/// The single-step interrupt (GPP bit 0), as MAME has it: after EI and
+/// one more instruction (the debugger's return into the program), exactly
+/// one instruction of the program runs before RST 10H.
+void
+testSingleStep()
+{
+    std::vector<uint8_t> rom(4096, 0);
+    auto put = [&](unsigned at, std::initializer_list<uint8_t> b) {
+        for (uint8_t x : b)
+        {
+            rom[at++] = x;
+        }
+    };
+    put(0x0000, {0xf3, 0xc3, 0x40, 0x00});                  // DI; JP 0040
+    put(0x0010, {0xe1, 0x22, 0x00, 0x90,                    // POP HL; (9000)=HL
+                 0xaf, 0xd3, 0xf2,                          // OUT (F2),0: off
+                 0x3a, 0x02, 0x90, 0x3c, 0x32, 0x02, 0x90,  // (9002)++
+                 0x76, 0x18, 0xfd});                        // HALT; JR -3
+    put(0x0040, {0x31, 0x00, 0x80,                          // LD SP,8000
+                 0xaf, 0x32, 0x02, 0x90,                    // (9002) = 0
+                 0x3e, 0x01, 0xd3, 0xf2,                    // OUT (F2),1: on
+                 0xfb,                                      // EI
+                 0xc3, 0x50, 0x00});                        // JP 0050
+    put(0x0050, {0x00, 0x00, 0x00, 0x18, 0xfb});            // NOPs; JR 0050
+
+    h89_config  c = bareConfig();
+    MachineRoms roms;
+    roms.monitor     = rom.data();
+    roms.monitorSize = rom.size();
+
+    Machine               m(c, roms, MachineOptions());
+    MachineContext::Scope s(&m.context());
+    for (int i = 0; i < 5; ++i)
+    {
+        m.runSlice();
+    }
+    int ret = m.memory().readByte(0x9000) | (m.memory().readByte(0x9001) << 8);
+    printf("  RST 10H returned to %04x, taken %d time(s)\n", ret, m.memory().readByte(0x9002));
+    CHECK_EQ_INT(ret, 0x0051);
+    CHECK_EQ_INT(m.memory().readByte(0x9002), 1);
+    // the handler's OUT (F2),0 released level 2
+    CHECK(!m.singleStep().enabled());
+    CHECK(!m.singleStep().asserted());
+    CHECK_EQ_INT(m.intr().levels() & 0x04, 0);
+}
+
 int
 main()
 {
@@ -279,6 +326,7 @@ main()
     testMms77318();
     testInterruptController();
     testBadConfig();
+    testSingleStep();
     testTimerAndConsole();
     return t_done("machine");
 }

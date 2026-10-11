@@ -14,6 +14,7 @@
 #include "INS8250.h"
 #include "ascii.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace
@@ -33,6 +34,11 @@ H19Terminal::H19Terminal(BYTE sw401, BYTE sw402): uart_m(nullptr),
                                                   generation_m(0),
                                                   sw401_m(sw401),
                                                   sw402_m(sw402),
+                                                  ansiMode_m(false),
+                                                  csiPrivate_m(0),
+                                                  csiCount_m(0),
+                                                  scrollCredit_m(0),
+                                                  blocked_m(false),
                                                   countdown_m(0),
                                                   keyHead_m(0),
                                                   keyTail_m(0),
@@ -94,7 +100,7 @@ H19Terminal::setSW402(BYTE sw402)
     // +======+===============+
     sw402_m         = sw402;
     keypadShifted_m = (sw402 & 0x40) != 0;
-    ansiRequested_m = (sw402 & 0x20) != 0;
+    ansiMode_m      = (sw402 & 0x20) != 0;
     autoCR_m        = (sw402 & 0x10) != 0;
     autoLF_m        = (sw402 & 0x08) != 0;
     wrapEOL_m       = (sw402 & 0x04) != 0;
@@ -114,6 +120,11 @@ H19Terminal::powerOn()
     cursorOff_m       = false;
     altKeypadMode_m   = false;
     keyboardEnabled_m = true;
+    csiPrivate_m      = 0;
+    csiCount_m        = 0;
+    held_m.clear();
+    scrollCredit_m    = 0;
+    blocked_m         = false;
 
     setSW401(sw401_m);
     setSW402(sw402_m);
@@ -250,8 +261,15 @@ H19Terminal::encodeKey(unsigned code, bool shift)
             setOffline(!offline_m);
             return;
         case H89K_SCROLL:
-            // releases hold-screen mode's pause; nothing is held here (the
-            // H89 is never paused by the terminal), so it only clicks
+            // hold-screen mode: one more line, or (shifted) a page
+            if (holdScreen_m)
+            {
+                scrollCredit_m += shift ? rowsMain_c : 1;
+                if (!held_m.empty())
+                {
+                    releaseHeld();
+                }
+            }
             return;
         case H89K_BREAK:
             if (uart_m && !offline_m)
@@ -271,7 +289,7 @@ H19Terminal::encodeKey(unsigned code, bool shift)
         return;
     }
 
-    char seq[4] = {0, 0, 0, 0};
+    char seq[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     if (code < 0x80)
     {
@@ -299,7 +317,7 @@ H19Terminal::encodeKey(unsigned code, bool shift)
         if (altKeypadMode_m && !shifted)
         {
             seq[0] = ascii::ESC;
-            seq[1] = '?';
+            seq[1] = ansiMode_m ? 'O' : '?';
             seq[2] = altCodes[k];
         }
         else
@@ -309,29 +327,48 @@ H19Terminal::encodeKey(unsigned code, bool shift)
     }
     else
     {
-        static const struct { unsigned code; char ch; } escs[] = {
-            {H89K_F1, 'S'}, {H89K_F2, 'T'}, {H89K_F3, 'U'}, {H89K_F4, 'V'},
-            {H89K_F5, 'W'}, {H89K_ERASE, 'J'}, {H89K_BLUE, 'P'}, {H89K_RED, 'Q'},
-            {H89K_GRAY, 'R'}, {H89K_UP, 'A'}, {H89K_DOWN, 'B'}, {H89K_RIGHT, 'C'},
-            {H89K_LEFT, 'D'}, {H89K_HOME, 'H'}, {H89K_IC, '@'}, {H89K_DC, 'N'},
-            {H89K_IL, 'L'}, {H89K_DL, 'M'},
+        // Heath: ESC x. ANSI: the function keys are ESC O x (the manual's
+        // table); ERASE and SHIFT+ERASE are annotated on ESC [ J and
+        // ESC [ 2 J in its ANSI summary, and the editing keys send their
+        // functions' ANSI sequences likewise (the manual tabulates only the
+        // Heath codes for the shifted keypad -- which the terminal itself,
+        // in ANSI mode, would not act on off line).
+        static const struct { unsigned code; const char* heath; const char* ansi; } keys[] = {
+            {H89K_F1, "\033S", "\033OS"}, {H89K_F2, "\033T", "\033OT"},
+            {H89K_F3, "\033U", "\033OU"}, {H89K_F4, "\033V", "\033OV"},
+            {H89K_F5, "\033W", "\033OW"}, {H89K_BLUE, "\033P", "\033OP"},
+            {H89K_RED, "\033Q", "\033OQ"}, {H89K_GRAY, "\033R", "\033OR"},
+            {H89K_UP, "\033A", "\033[A"}, {H89K_DOWN, "\033B", "\033[B"},
+            {H89K_RIGHT, "\033C", "\033[C"}, {H89K_LEFT, "\033D", "\033[D"},
+            {H89K_HOME, "\033H", "\033[H"}, {H89K_DC, "\033N", "\033[P"},
+            {H89K_IL, "\033L", "\033[L"}, {H89K_DL, "\033M", "\033[M"},
         };
+        const char* out = nullptr;
         if (code == H89K_LINEFEED)
         {
-            seq[0] = ascii::LF;
+            out = "\n";
         }
-        for (const auto& e : escs)
+        else if (code == H89K_ERASE)
+        {
+            out = shift ? (ansiMode_m ? "\033[2J" : "\033E") : (ansiMode_m ? "\033[J" : "\033J");
+        }
+        else if (code == H89K_IC)
+        {
+            // IC enters insert character mode, and leaves it again
+            out = insertMode_m ? (ansiMode_m ? "\033[4l" : "\033O") : (ansiMode_m ? "\033[4h" : "\033@");
+        }
+        for (const auto& e : keys)
         {
             if (e.code == code)
             {
-                seq[0] = ascii::ESC;
-                seq[1] = e.ch;
+                out = ansiMode_m ? e.ansi : e.heath;
             }
         }
-        if (!seq[0])
+        if (!out)
         {
             return;
         }
+        snprintf(seq, sizeof seq, "%s", out);
     }
 
     if (offline_m)
@@ -419,7 +456,58 @@ H19Terminal::receiveData(BYTE ch)
     {
         return;
     }
+    // hold-screen mode is holding the line: this waits behind the rest (a
+    // host that ignores the XOFF loses what overflows, as on the terminal)
+    if (!held_m.empty())
+    {
+        if (held_m.size() < heldMax_c)
+        {
+            held_m.push_back(ch);
+        }
+        return;
+    }
+    blocked_m = false;
     processCharacter(ch);
+    if (blocked_m)
+    {
+        held_m.push_back(ch);
+        queueByte(ascii::DC3);   // XOFF
+    }
+}
+
+bool
+H19Terminal::mayScroll()
+{
+    // keys typed off line are the terminal talking to itself: never held
+    if (!holdScreen_m || offline_m)
+    {
+        return true;
+    }
+    if (scrollCredit_m > 0)
+    {
+        --scrollCredit_m;
+        return true;
+    }
+    blocked_m = true;
+    return false;
+}
+
+void
+H19Terminal::releaseHeld()
+{
+    while (!held_m.empty())
+    {
+        blocked_m = false;
+        // a character held part-done (CR with auto LF) is processed again
+        // from the start: what it did already does not change for that
+        processCharacter(held_m.front());
+        if (blocked_m)
+        {
+            return;   // the next SCROLL
+        }
+        held_m.pop_front();
+    }
+    queueByte(ascii::DC1);   // XON
 }
 
 void
@@ -503,6 +591,11 @@ H19Terminal::processCharacter(BYTE ch)
     }
     else if (mode_m == Escape)
     {
+        if (ansiMode_m)
+        {
+            processAnsiEscape(ch);
+            return;
+        }
         // Assume we go back to Normal, so only the few that don't need to set the mode.
         mode_m = Normal;
 
@@ -598,16 +691,16 @@ H19Terminal::processCharacter(BYTE ch)
             case 'y': // Reset Mode
                 mode_m = ResetMode;
                 break;
-            case '<': // Enter ANSI Mode -- not emulated; remembered for the debugger
-                ansiRequested_m = true;
+            case '<': // Enter ANSI Mode
+                ansiMode_m = true;
                 break;
 
             // Modes of operation
             case '[': // Enter Hold Screen Mode
-                holdScreen_m = true;
+                setHeathMode(3, true);
                 break;
             case '\\': // Exit Hold Screen Mode
-                holdScreen_m = false;
+                setHeathMode(3, false);
                 break;
             case 'p': // Enter Reverse Video Mode
                 reverseVideo_m = true;
@@ -661,89 +754,18 @@ H19Terminal::processCharacter(BYTE ch)
                 break;
         }
     }
-    else if (mode_m == SetMode)
+    else if (mode_m == SetMode || mode_m == ResetMode)
     {
-        mode_m = Normal;
-
-        switch (ch)
+        bool on = mode_m == SetMode;
+        mode_m  = Normal;
+        if (ch >= '1' && ch <= '9')
         {
-            case '1': // Enable 25th line
-                line25_m = true;
-                break;
-            case '2': // No key click
-                noKeyClick_m = true;
-                break;
-            case '3': // Hold screen mode
-                holdScreen_m = true;
-                break;
-            case '4': // Block Cursor
-                cursorBlock_m = true;
-                touched();
-                break;
-            case '5': // Cursor Off
-                cursorOff_m = true;
-                touched();
-                break;
-            case '6': // Keypad Shifted
-                keypadShifted_m = true;
-                break;
-            case '7': // Alternate Keypad mode
-                altKeypadMode_m = true;
-                break;
-            case '8': // Auto LF
-                autoLF_m = true;
-                break;
-            case '9': // Auto CR
-                autoCR_m = true;
-                break;
-            default:
-                break;
+            setHeathMode(ch - '0', on);
         }
     }
-    else if (mode_m == ResetMode)
+    else if (mode_m == Csi)
     {
-        mode_m = Normal;
-
-        switch (ch)
-        {
-            case '1': // Disable 25th line
-                eraseLine(rowsMain_c);
-                line25_m = false;
-                if (posY_m == rowsMain_c)
-                {
-                    posY_m = rowsMain_c - 1;
-                }
-                touched();
-                break;
-            case '2': // key click
-                noKeyClick_m = false;
-                break;
-            case '3': // Hold screen mode
-                holdScreen_m = false;
-                break;
-            case '4': // Underline Cursor
-                cursorBlock_m = false;
-                touched();
-                break;
-            case '5': // Cursor On
-                cursorOff_m = false;
-                touched();
-                break;
-            case '6': // Keypad Unshifted
-                keypadShifted_m = false;
-                break;
-            case '7': // Exit Alternate Keypad mode
-                altKeypadMode_m = false;
-                break;
-            case '8': // No Auto LF
-                autoLF_m = false;
-                break;
-            case '9': // No Auto CR
-                autoCR_m = false;
-                break;
-            default:
-                break;
-        }
+        processCsi(ch);
     }
     else if (mode_m == DCA_1)
     {
@@ -789,6 +811,354 @@ H19Terminal::processCharacter(BYTE ch)
     }
 }
 
+/// ESC x Ps / ESC y Ps (Heath) and ESC [ > Ps h / l (ANSI): modes 1-9.
+void
+H19Terminal::setHeathMode(int n, bool on)
+{
+    switch (n)
+    {
+        case 1: // 25th line
+            if (!on)
+            {
+                eraseLine(rowsMain_c);
+                if (posY_m == rowsMain_c)
+                {
+                    posY_m = rowsMain_c - 1;
+                }
+            }
+            line25_m = on;
+            touched();
+            break;
+        case 2: // no key click
+            noKeyClick_m = on;
+            break;
+        case 3: // hold screen: it holds from the next scroll on
+            if (on && !holdScreen_m)
+            {
+                scrollCredit_m = 0;
+            }
+            holdScreen_m = on;
+            break;
+        case 4: // block cursor
+            cursorBlock_m = on;
+            touched();
+            break;
+        case 5: // cursor off
+            cursorOff_m = on;
+            touched();
+            break;
+        case 6: // keypad shifted
+            keypadShifted_m = on;
+            break;
+        case 7: // alternate keypad
+            altKeypadMode_m = on;
+            break;
+        case 8: // auto LF on CR
+            autoLF_m = on;
+            break;
+        case 9: // auto CR on LF
+            autoCR_m = on;
+            break;
+        default:
+            break;
+    }
+}
+
+/// ESC in ANSI mode: the terminal answers only ANSI's syntax -- CSI, RI and
+/// the keypad modes.
+void
+H19Terminal::processAnsiEscape(BYTE ch)
+{
+    mode_m = Normal;
+    switch (ch)
+    {
+        case ascii::ESC:
+            mode_m = Escape;
+            break;
+        case '[': // CSI
+            mode_m       = Csi;
+            csiPrivate_m = 0;
+            csiCount_m   = 0;
+            break;
+        case 'M': // RI: Reverse Index
+            reverseIndex();
+            break;
+        case '=': // Enter Alternate Keypad Mode
+            altKeypadMode_m = true;
+            break;
+        case '>': // Exit Alternate Keypad Mode
+            altKeypadMode_m = false;
+            break;
+        default:
+            break;
+    }
+}
+
+void
+H19Terminal::processCsi(BYTE ch)
+{
+    if (ch == ascii::CAN)
+    {
+        mode_m = Normal;
+        return;
+    }
+    if (ch == ascii::ESC)
+    {
+        mode_m = Escape;
+        return;
+    }
+    if (ch >= '0' && ch <= '9')
+    {
+        if (csiCount_m == 0)
+        {
+            csiParam_m[csiCount_m++] = 0;
+        }
+        int& p = csiParam_m[csiCount_m - 1];
+        if (p < 10000)
+        {
+            p = p * 10 + (ch - '0');
+        }
+        return;
+    }
+    if (ch == ';')
+    {
+        if (csiCount_m == 0)
+        {
+            csiParam_m[csiCount_m++] = 0;
+        }
+        if (csiCount_m < csiMax_c)
+        {
+            csiParam_m[csiCount_m++] = 0;
+        }
+        return;
+    }
+    if ((ch == '>' || ch == '?') && csiCount_m == 0 && !csiPrivate_m)
+    {
+        csiPrivate_m = (char) ch;
+        return;
+    }
+    mode_m = Normal;
+    if (ch >= 0x40 && ch <= 0x7e)
+    {
+        executeCsi(ch);
+    }
+    // anything else is not a sequence the H19 knows: dropped
+}
+
+/// Parameter i; absent or zero is the default (the manual's note 2).
+int
+H19Terminal::csiParam(unsigned i, int def) const
+{
+    return (i < csiCount_m && csiParam_m[i] != 0) ? csiParam_m[i] : def;
+}
+
+void
+H19Terminal::executeCsi(BYTE final)
+{
+    const int n = csiParam(0, 1);
+
+    if (csiPrivate_m == '>')
+    {
+        // SM / RM: the Heath modes
+        if (final == 'h' || final == 'l')
+        {
+            for (unsigned i = 0; i < csiCount_m; ++i)
+            {
+                setHeathMode(csiParam_m[i], final == 'h');
+            }
+        }
+        return;
+    }
+    if (csiPrivate_m == '?')
+    {
+        for (unsigned i = 0; i < csiCount_m; ++i)
+        {
+            if (csiParam_m[i] == 2 && final == 'h')
+            {
+                ansiMode_m = false;   // PEHM: Enter Heath Mode
+            }
+            else if (csiParam_m[i] == 7 && (final == 'h' || final == 'l'))
+            {
+                wrapEOL_m = final == 'h';   // wrap around / discard at end of line
+            }
+        }
+        return;
+    }
+
+    switch (final)
+    {
+        case 'H': // CUP
+        case 'f': // HVP
+        {
+            // a line too high leaves the cursor's line alone; a column too
+            // high is the end of the line. Only this reaches line 25.
+            int row = csiParam(0, 1);
+            int col = csiParam(1, 1);
+            if (row <= (int) rowsMain_c)
+            {
+                posY_m = (unsigned) row - 1;
+            }
+            else if (row == (int) rows_c && line25_m)
+            {
+                posY_m = rows_c - 1;
+            }
+            posX_m = col > (int) cols_c ? cols_c - 1 : (unsigned) col - 1;
+            touched();
+            break;
+        }
+        case 'A': // CUU
+            for (int i = 0; i < n; ++i)
+            {
+                cursorUp();
+            }
+            break;
+        case 'B': // CUD
+            for (int i = 0; i < n; ++i)
+            {
+                cursorDown();
+            }
+            break;
+        case 'C': // CUF
+            for (int i = 0; i < n; ++i)
+            {
+                cursorForward();
+            }
+            break;
+        case 'D': // CUB
+            for (int i = 0; i < n; ++i)
+            {
+                processBS();
+            }
+            break;
+        case 'J': // ED
+            switch (csiParam(0, 0))
+            {
+                case 0:
+                    eraseEOP();
+                    break;
+                case 1:
+                    eraseBOD();
+                    break;
+                case 2:
+                    clearDisplay();
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case 'K': // EL
+            switch (csiParam(0, 0))
+            {
+                case 0:
+                    eraseEOL();
+                    break;
+                case 1:
+                    eraseBOL();
+                    break;
+                case 2:
+                    eraseEL();
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case 'L': // IL
+            for (int i = 0; i < n; ++i)
+            {
+                insertLine();
+            }
+            break;
+        case 'M': // DL
+            for (int i = 0; i < n; ++i)
+            {
+                deleteLine();
+            }
+            break;
+        case 'P': // DCH
+            for (int i = 0; i < n; ++i)
+            {
+                deleteChar();
+            }
+            break;
+        case 'h': // SM
+        case 'l': // RM
+            for (unsigned i = 0; i < csiCount_m; ++i)
+            {
+                switch (csiParam_m[i])
+                {
+                    case 2: // KAM: keyboard disabled
+                        keyboardEnabled_m = final == 'l';
+                        break;
+                    case 4: // IRM: insert character mode
+                        insertMode_m = final == 'h';
+                        break;
+                    case 20: // LNM: new line mode (auto LF on CR)
+                        autoLF_m = final == 'h';
+                        break;
+                    default:
+                        break;
+                }
+            }
+            break;
+        case 'm': // SGR
+            if (csiCount_m == 0)
+            {
+                reverseVideo_m = false;
+            }
+            for (unsigned i = 0; i < csiCount_m; ++i)
+            {
+                switch (csiParam_m[i])
+                {
+                    case 0:
+                        reverseVideo_m = false;
+                        break;
+                    case 7:
+                        reverseVideo_m = true;
+                        break;
+                    case 10:
+                        graphicMode_m = true;
+                        break;
+                    case 11:
+                        graphicMode_m = false;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            break;
+        case 'n': // CPR: ESC [ Pl ; Pc R
+            if (csiParam(0, 0) == 6)
+            {
+                char rep[24];
+                snprintf(rep, sizeof rep, "\033[%u;%uR", posY_m + 1, cursorCol() + 1);
+                sendSeq(rep);
+            }
+            break;
+        case 's': // PSCP
+            saveX_m = posX_m;
+            saveY_m = posY_m;
+            break;
+        case 'u': // PRCP
+            posX_m = saveX_m;
+            posY_m = saveY_m;
+            touched();
+            break;
+        case 'z': // PRAM: Reset to Power-Up Configuration
+            powerOn();
+            break;
+        case 'r': // PMBR: the baud rate (as ESC r: not emulated)
+            break;
+        case 'p': // PXMT: Transmit Page
+            transmitPage();
+            break;
+        case 'q': // PX25: Transmit 25th Line
+            transmitLine25();
+            break;
+        default:
+            break;
+    }
+}
+
 void
 H19Terminal::displayCharacter(unsigned ch)
 {
@@ -823,6 +1193,10 @@ H19Terminal::displayCharacter(unsigned ch)
     {
         if (wrapEOL_m)
         {
+            if (posY_m == (rowsMain_c - 1) && !mayScroll())
+            {
+                return;
+            }
             posX_m = 0;
 
             if (posY_m < (rowsMain_c - 1))
@@ -887,6 +1261,10 @@ H19Terminal::processLF()
     }
     else
     {
+        if (!mayScroll())
+        {
+            return;
+        }
         scroll();
     }
     touched();
@@ -1143,14 +1521,17 @@ H19Terminal::transmitLines(int start, int end)
             bool newReverse  = (c & 0x80) != 0;
             bool newGraphics = ((c & 0x7f) < 0x20) || ((c & 0x7f) == 0x7f);
 
+            // the sequences of the mode the terminal is in
             if (newReverse != reverse)
             {
-                sendSeq(newReverse ? "\033p" : "\033q");
+                sendSeq(ansiMode_m ? (newReverse ? "\033[7m" : "\033[m")
+                                   : (newReverse ? "\033p" : "\033q"));
                 reverse = newReverse;
             }
             if (newGraphics != graphics)
             {
-                sendSeq(newGraphics ? "\033F" : "\033G");
+                sendSeq(ansiMode_m ? (newGraphics ? "\033[10m" : "\033[11m")
+                                   : (newGraphics ? "\033F" : "\033G"));
                 graphics = newGraphics;
             }
 
@@ -1206,12 +1587,13 @@ H19Terminal::modes() const
     m.autoLF           = autoLF_m;
     m.autoCR           = autoCR_m;
     m.noKeyClick       = noKeyClick_m;
-    m.ansiRequested    = ansiRequested_m;
+    m.ansi             = ansiMode_m;
     m.escState         = (int) mode_m;
     m.sw401            = sw401_m;
     m.sw402            = sw402_m;
     m.baud             = baud_m;
     m.queued           = toSend_m.size();
+    m.held             = held_m.size();
     return m;
 }
 

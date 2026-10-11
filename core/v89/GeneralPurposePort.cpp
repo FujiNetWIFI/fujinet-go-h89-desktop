@@ -4,6 +4,10 @@
 /// \date Apr 20, 2009
 /// \author Mark Garlanger
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   the single-step interrupt (bit 0) is core/machine/SingleStep's; the
+///   "not implemented" warning on every write with it set is gone.
+///
 
 #include "GeneralPurposePort.h"
 
@@ -150,11 +154,8 @@ GeneralPurposePort::out(BYTE addr,
 
         portBits_m = val;
 
-        if (val & gpp_SingleStepInterrupt_c)
-        {
-            debugss(ssGpp, WARNING, "Single Step Interrupt - not implemented.\n");
-            /// \todo - implement single step interrupt..
-        }
+        // bit 0, the single-step interrupt, is core/machine/SingleStep's
+        // (a GppListener)
 
         if (diffs != 0)
         {

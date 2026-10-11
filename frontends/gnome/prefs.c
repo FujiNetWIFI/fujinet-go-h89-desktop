@@ -669,7 +669,7 @@ static AdwPreferencesPage *switches_page(PrefsState *st)
     adw_preferences_group_add(sw402, bit_row(st, "Wrap at the end of a line", NULL, &st->cfg.sw402, 0x04));
     adw_preferences_group_add(sw402, bit_row(st, "Line feed on carriage return", NULL, &st->cfg.sw402, 0x08));
     adw_preferences_group_add(sw402, bit_row(st, "Carriage return on line feed", NULL, &st->cfg.sw402, 0x10));
-    adw_preferences_group_add(sw402, bit_row(st, "ANSI mode", "Asked for; the H19 here speaks Heath",
+    adw_preferences_group_add(sw402, bit_row(st, "ANSI mode", "At power-up; Heath mode otherwise",
                                              &st->cfg.sw402, 0x20));
     adw_preferences_group_add(sw402, bit_row(st, "Keypad shifted", NULL, &st->cfg.sw402, 0x40));
     adw_preferences_group_add(sw402, bit_row(st, "50 Hz refresh", NULL, &st->cfg.sw402, 0x80));

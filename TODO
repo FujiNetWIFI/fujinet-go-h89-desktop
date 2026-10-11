@@ -177,7 +177,21 @@ M9  CI/CD                                                             [~]
       checks; a draft release on a v* tag, a dry run by hand)
   [ ] verify: every workflow green; the release dry run produces every
       artifact
-M10 polish, family audit                                              [ ]
+M10 polish, family audit                                              [~]
+  [x] the single-step interrupt (GPP bit 0), as MAME has it: EI, one more
+      opcode fetch, then level 2 (RST 10H) on the next -- one instruction of
+      the program runs; shown in the debugger's timer section
+  [x] H19 ANSI mode (ESC <, or SW402 at power-up): the Operation Manual's
+      CSI set (CUP/HVP, CUU/CUD/CUF/CUB, ED, EL, IL, DL, DCH, IRM, KAM, LNM,
+      SGR 0/7/10/11, CPR, save/restore, PRAM, PXMT/PX25, ESC [ > Ps h/l,
+      ESC [ ? 2 h, ESC [ ? 7 h/l) and the keys' ANSI codes; transmit page
+      in the mode's sequences
+  [x] hold-screen mode: the line holds before a scroll, XOFF; SCROLL lets
+      a line through, SHIFT+SCROLL a page, then XON
+  [x] keys: SHIFT+ERASE clears the display, IC toggles insert mode
+  verify: machine test (single step returns to 0051), h19_escape (ANSI
+      sequences, ANSI keys, hold screen with XOFF/XON)
+  [ ] README "How this was verified"; family audit against sms; memory note
 
 Notes / gotchas
 ---------------

@@ -35,6 +35,7 @@
 #include "IntrController.h"
 #include "Machine.h"
 #include "MemoryDecoder.h"
+#include "SingleStep.h"
 #include "h17.h"
 #include "h37.h"
 #include "h89-timer.h"
@@ -1104,15 +1105,17 @@ h89debug_section(h89debug* d, int section, char* dst, int dstsz)
             o("H19: cursor row %u column %u%s%s, line 25 %s\n", t.cursorRow() + 1, t.cursorCol() + 1,
               t.cursorVisible() ? "" : " (hidden)", t.cursorBlock() ? " block" : "",
               t.line25() ? "on" : "off");
-            o("modes:%s%s%s%s%s%s%s%s%s%s%s\n", md.offline ? " off-line" : "",
+            o("modes:%s%s%s%s%s%s%s%s%s%s%s%s\n", md.ansi ? " ANSI" : " Heath",
+              md.offline ? " off-line" : "",
               md.holdScreen ? " hold-screen" : "", md.keypadShifted ? " keypad-shifted" : "",
               md.altKeypad ? " alternate-keypad" : "", md.keyboardDisabled ? " keyboard-off" : "",
               md.reverseVideo ? " reverse" : "", md.graphics ? " graphics" : "",
               md.insert ? " insert" : "", md.wrapEOL ? " wrap" : "", md.autoLF ? " auto-LF" : "",
               md.autoCR ? " auto-CR" : "");
-            o("line: %u baud, SW401 %s, SW402 %s, escape state %d, %zu key byte(s) queued\n",
+            o("line: %u baud, SW401 %s, SW402 %s, escape state %d, %zu key byte(s) queued, "
+              "%zu held for SCROLL\n",
               md.baud, fmt8(rx, md.sw401, a, sizeof a), fmt8(rx, md.sw402, b, sizeof b), md.escState,
-              md.queued);
+              md.queued, md.held);
             break;
         }
         case H89DEBUG_SECTION_MEMORY:
@@ -1135,6 +1138,9 @@ h89debug_section(h89debug* d, int section, char* dst, int dstsz)
             const Z80::Registers r = regs(m);
             o("2 ms clock: %lu ticks, interrupt %s\n", (unsigned long) m->timer().count(),
               m->timer().interruptEnabled() ? "enabled (GPP bit 1)" : "disabled");
+            o("single step (GPP bit 0): %s\n",
+              !m->singleStep().enabled() ? "off"
+              : m->singleStep().asserted() ? "on, RST 10H raised" : "on, waiting for EI");
             o("interrupt levels pending %s%s, CPU IM %d IFF1 %d IFF2 %d%s\n",
               fmt8(rx, m->intr().levels(), a, sizeof a), m->intr().blocked() ? " (blocked)" : "",
               r.im, r.iff1, r.iff2, r.halted ? ", halted" : "");

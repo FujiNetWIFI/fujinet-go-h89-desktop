@@ -13,6 +13,8 @@
 ///   execute()/step() replaced by runCycles(): no system mutex, no sleeping
 ///   on a SIGALRM-fed tick budget -- the host gives the CPU a budget per 2 ms
 ///   slice. Debugger hooks and register access added. IM 2 implemented.
+///   An M1 hook (every opcode fetch) for the CPU board's single-step
+///   interrupt.
 ///
 
 #ifndef Z80_H_
@@ -245,6 +247,14 @@ class Z80: public CPU, public GppListener
         ioHook_m     = hook;
         ioHookUser_m = user;
     }
+    /// Called for every opcode fetch (M1, prefixes included; not the
+    /// interrupt acknowledge's data-bus read): the single-step interrupt.
+    typedef void (*M1Hook)(void* user, BYTE opcode);
+    void setM1Hook(M1Hook hook, void* user)
+    {
+        m1Hook_m     = hook;
+        m1HookUser_m = user;
+    }
     /// Called for every memory read/write, for watchpoints (only while set).
     typedef void (*MemHook)(void* user, bool write, WORD addr, BYTE data);
     void setMemHook(MemHook hook, void* user)
@@ -386,6 +396,8 @@ class Z80: public CPU, public GppListener
     void*             ioHookUser_m;
     MemHook           memHook_m;
     void*             memHookUser_m;
+    M1Hook            m1Hook_m;
+    void*             m1HookUser_m;
 
     /// One instruction (or an interrupt acknowledge + instruction).
     void stepOne();

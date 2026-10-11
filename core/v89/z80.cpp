@@ -897,6 +897,10 @@ Z80::readInst(void)
     if (!processingIntr)
     {
         ++PC;
+        if (m1Hook_m)
+        {
+            m1Hook_m(m1HookUser_m, val);
+        }
     }
 
     R++; // increment refresh register
@@ -1469,6 +1473,8 @@ Z80::Z80(Computer* computer,
                                     ioHookUser_m(nullptr),
                                     memHook_m(nullptr),
                                     memHookUser_m(nullptr),
+                                    m1Hook_m(nullptr),
+                                    m1HookUser_m(nullptr),
                                     IM(0)
 
 {
