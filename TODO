@@ -42,7 +42,7 @@ M1  emulator core, headless                                           [x]
       mingw cross-build; MTR-90 reaches "H:" in 3 s; boot_smoke measures
       500.0 slices/s
 
-M2  FujiNet card + H17 images                                         [~]
+M2  FujiNet card + H17 images                                         [x]
   [x] FujiNetCard: 82C55 mode 2 at 0xD0-D3, portio.c's handshake, EN
       reset/download mode, rawpipe (POSIX/Winsock, lazy reconnect)
   [x] H17Image: raw (both side orders), H8D (HDOS volume from the label),
@@ -53,8 +53,18 @@ M2  FujiNet card + H17 images                                         [~]
   verify: HDOS 2.0 boots from its distribution disk to its date prompt
       (hdos_boot test; it detects the console baud rate from a SPACE);
       card test against a loopback peer, also under Wine
-  [ ] FUJIDEV against the real libfujinet (needs the session layer's
-      runtime loader and a disk holding fujinet-lib's test programs)
+  [x] session layer (core/src): settings, paths, the FujiNet runtime
+      loader (listen first, then the machine dials), ROM import, media
+      routing, drives, audio; h89_session_run drives it headless
+  [x] fujibus_smoke: one FujiBus exchange through the card against the real
+      libfujinet, no ROMs (runs in CI wherever the runtime is built)
+  [x] h89_headless --prompt: wait for a prompt at the cursor (HDOS drops
+      what is typed ahead of one)
+  verify: tools/e2e/hdos-fujidev.sh -- HDOS 2.0 runs fujinet-lib's FUJIDEV
+      from SY1: against the in-process FujiNet: 23 of 24 pass; the one
+      failure is the firmware's (an empty filename does not clear a device
+      slot -- fujiDevice.cpp only invalidates its host slot), not the pipe;
+      fujibus_smoke: 140-byte adapter config, checksum good
 
 M3  disks                                                             [ ]
 M4  session + GNOME + KDE                                             [ ]
@@ -73,3 +83,8 @@ Notes / gotchas
 - The H17D draft's sector status is one byte in the published images, four
   in the draft's text; both are read.
 - A 204800-byte H8D is DS40 unless hinted SS80: nothing in the file says.
+- HDOS clears type-ahead when it prompts: a script must wait for the prompt
+  at the cursor (h89_headless --prompt), not just for the text on screen.
+- firmware master's build wants pyyaml>=6.0.3 and Jinja2>=3.1.6 and only
+  offers to install them interactively; the recipe installs what the venv
+  lacks (distros can be older), and the flatpaks bundle them.

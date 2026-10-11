@@ -24,6 +24,8 @@ int flushAll(Machine& m, std::string& firstErr);
 bool active(Machine& m, int id);
 /// The write-protect tab of drive `id` changed: tell its drive.
 void protectChanged(Machine& m, int id);
+/// An empty ImageDisk file.
+bool createBlankImd(const std::string& path, std::string& err);
 }
 
 #endif /* H89_DRIVES_INTERNAL_H */

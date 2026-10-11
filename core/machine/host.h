@@ -78,6 +78,9 @@ void h89host_take_sounds(unsigned *bells, unsigned *clicks);
 
 /* The screen as UTF-8 text; returns the length (0 when stopped). */
 size_t h89host_screen_text(char *dst, size_t dstsz, int line25);
+/* The cursor's line up to the cursor (graphics characters as '?'): what a
+ * script waits on for a prompt. Returns the length. */
+size_t h89host_text_before_cursor(char *dst, size_t dstsz);
 
 /* Runs without sleeping; FujiNet traffic still runs at real time (the
  * H89's FujiNet timeouts count its own 2 ms ticks). */

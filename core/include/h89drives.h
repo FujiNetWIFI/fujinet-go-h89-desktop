@@ -75,6 +75,11 @@ int h89drive_insert_spec(const char *spec, char *err, int errsz);
 
 const char *h89drive_ctrl_name(int ctrl);
 
+/* Writes a new blank image (h89session.h's h89_blank_kind) of the given
+ * geometry; 0, or -1 with the reason. */
+int h89image_create_blank(const char *path, int kind, int sides, int tracks,
+                          char *err, int errsz);
+
 #ifdef __cplusplus
 }
 #endif

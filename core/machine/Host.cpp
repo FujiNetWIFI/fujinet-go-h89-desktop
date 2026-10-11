@@ -534,6 +534,35 @@ h89host_screen_text(char* dst, size_t dstsz, int line25)
     return n;
 }
 
+size_t
+h89host_text_before_cursor(char* dst, size_t dstsz)
+{
+    if (!dst || !dstsz)
+    {
+        return 0;
+    }
+    dst[0] = '\0';
+    if (!s_running.load())
+    {
+        return 0;
+    }
+    size_t n = 0;
+    h89host_lock();
+    if (s_machine)
+    {
+        const H19Terminal& t   = s_machine->terminal();
+        unsigned           row = t.cursorRow();
+        for (unsigned col = 0; col < t.cursorCol() && n + 1 < dstsz; col++)
+        {
+            uint8_t c = t.cell(col, row) & 0x7f;
+            dst[n++]  = (c < 0x20 || c == 0x7f) ? '?' : (char) c;
+        }
+    }
+    h89host_unlock();
+    dst[n] = '\0';
+    return n;
+}
+
 void
 h89host_set_warp(int on)
 {

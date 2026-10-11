@@ -742,6 +742,45 @@ prepare_python_env() {
         "${py}" -m venv --system-site-packages "${VENV_ROOT}" \
             || fail "could not create the python virtualenv at ${VENV_ROOT}"
     fi
+
+    # The firmware's own list of modules (python_modules.txt: "module|pip
+    # requirement"), checked against its minimum versions; build.sh only
+    # offers to install what is missing, interactively, so a CI run would
+    # stop there. A distribution's copy can be too old (Ubuntu 24.04 has
+    # pyyaml 6.0.1), so pip fills the gaps in the venv. The flatpak
+    # manifests provide the modules, and nothing is installed there.
+    local vpy="${VENV_ROOT}/bin/python"
+    [[ -x "${vpy}" ]] || vpy="${VENV_ROOT}/Scripts/python.exe"
+    [[ -x "${vpy}" ]] || vpy="${VENV_ROOT}/bin/python3"
+    local missing
+    missing="$("${vpy}" - "${CLONE_DIR}/python_modules.txt" <<'PY'
+import importlib.metadata as md, re, sys
+try:
+    lines = open(sys.argv[1]).read().splitlines()
+except OSError:
+    sys.exit(0)
+def vt(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+for line in lines:
+    line = line.strip()
+    if not line or line.startswith("#") or "|" not in line:
+        continue
+    req = line.split("|", 1)[1].strip()
+    m = re.match(r"([A-Za-z0-9_.-]+)\s*(>=\s*([0-9.]+))?", req)
+    try:
+        have = md.version(m.group(1))
+        if m.group(3) and vt(have) < vt(m.group(3)):
+            print(req)
+    except md.PackageNotFoundError:
+        print(req)
+PY
+)"
+    if [[ -n "${missing}" ]]; then
+        echo "Installing into ${VENV_ROOT}: ${missing//$'\n'/ }"
+        # shellcheck disable=SC2086
+        "${vpy}" -m pip install -q ${missing} \
+            || fail "could not install the FujiNet build's python modules (${missing//$'\n'/ })"
+    fi
 }
 
 # --------------------------------------------------------------------------

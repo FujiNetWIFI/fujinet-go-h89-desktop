@@ -5,6 +5,9 @@
  *
  *   --until TEXT       wait (in real time, up to --timeout) until the H19's
  *                      screen shows TEXT; fails the run if it does not
+ *   --prompt TEXT      the same, but TEXT must end the cursor's line just
+ *                      before the cursor -- a prompt the system is now
+ *                      reading at (HDOS drops what is typed ahead of one)
  *   --type TEXT        type TEXT on the H19's keyboard (\r, \n, \e, \\ and
  *                      \xHH escapes; newlines are RETURN)
  *   --key NAME         press a special key: f1..f5, erase, blue, red, gray,
@@ -16,11 +19,17 @@
  *
  * Machine options (before the steps): --roms DIR (default $H89_TEST_ROM_DIR,
  * then tools/roms), --monitor FILE, --boip HOST:PORT, --warp,
- * --timeout SECONDS (per --until; default 20), --set KEY=VALUE (the
+ * --timeout SECONDS (per --until/--prompt; default 20), --set KEY=VALUE (the
  * session's config keys, e.g. slot.p505=h37).
  *
  * Exit status: 0 when every step passed, 1 on a failed step, 2 on a usage
  * error, 77 when the ROMs it needs are not there (ctest's "skipped").
+ *
+ * Built twice: h89_headless runs the core alone; h89_session_run
+ * (-DH89_HEADLESS_SESSION) brings the machine up through the session, with
+ * the in-process FujiNet runtime, in a private settings and data tree
+ * (--home DIR, default a fresh one under the temp folder) -- the end-to-end
+ * runs against FujiNet use it.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -31,6 +40,9 @@
 #include "h89keys.h"
 #include "h89roms.h"
 #include "host.h"
+#ifdef H89_HEADLESS_SESSION
+#include "h89session.h"
+#endif
 
 #include <ctype.h>
 #include <stdio.h>
@@ -57,6 +69,8 @@ typedef struct {
 } rom_image;
 
 static rom_image s_found[64];
+static char home_dir[1024];
+static char start_dir[1024] = ".";
 
 static void sleep_ms(int ms)
 {
@@ -118,6 +132,42 @@ static int load_rom_dir(const char *dir)
     return n;
 }
 
+#ifdef H89_HEADLESS_SESSION
+static void import_rom_dir(h89session *sess, const char *dir, char *msg, int msgsz)
+{
+    char path[2048];
+#ifdef _WIN32
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    snprintf(path, sizeof path, "%s\\*", dir);
+    h = FindFirstFileA(path, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+        return;
+    do
+    {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            continue;
+        snprintf(path, sizeof path, "%s\\%s", dir, fd.cFileName);
+        h89session_import_roms(sess, path, msg, msgsz);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    DIR *d = opendir(dir);
+    struct dirent *e;
+    if (!d)
+        return;
+    while ((e = readdir(d)) != NULL)
+    {
+        if (e->d_name[0] == '.')
+            continue;
+        snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
+        h89session_import_roms(sess, path, msg, msgsz);
+    }
+    closedir(d);
+#endif
+}
+#endif
+
 static const rom_image *rom_by_file(const char *file)
 {
     int i = h89_rom_find_file(file);
@@ -159,6 +209,18 @@ static int screen_has(const char *text)
     static char buf[16384];
     h89host_screen_text(buf, sizeof buf, 1);
     return strstr(buf, text) != NULL;
+}
+
+/* Is the cursor just after `text` (trailing blanks ignored on both)? */
+static int at_prompt(const char *text)
+{
+    char line[256];
+    size_t n = h89host_text_before_cursor(line, sizeof line), t = strlen(text);
+    while (n && line[n - 1] == ' ')
+        n--;
+    while (t && text[t - 1] == ' ')
+        t--;
+    return n >= t && !memcmp(line + n - t, text, t);
 }
 
 static void print_screen(void)
@@ -216,8 +278,8 @@ static void usage(void)
     fprintf(stderr,
             "usage: h89_headless [--roms DIR] [--monitor FILE] [--boip HOST:PORT] [--warp]\n"
             "                    [--timeout S] [--set KEY=VALUE]...\n"
-            "                    [--until TEXT | --type TEXT | --key NAME | --wait MS |\n"
-            "                     --screen | --ppm FILE | --disk SPEC]...\n");
+            "                    [--until TEXT | --prompt TEXT | --type TEXT | --key NAME |\n"
+            "                     --wait MS | --screen | --ppm FILE | --disk SPEC]...\n");
 }
 
 int main(int argc, char **argv)
@@ -231,6 +293,13 @@ int main(int argc, char **argv)
     char err[256];
 
     h89_config_default(&cfg);
+#ifdef _WIN32
+    if (!GetCurrentDirectoryA(sizeof start_dir, start_dir))
+        snprintf(start_dir, sizeof start_dir, ".");
+#else
+    if (!getcwd(start_dir, sizeof start_dir))
+        snprintf(start_dir, sizeof start_dir, ".");
+#endif
     snprintf(default_romdir, sizeof default_romdir, "%s%ctools%croms", H89_SOURCE_DIR, DIRSEP, DIRSEP);
 
     for (int i = 1; i < argc; i++)
@@ -254,6 +323,8 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--warp"))
             warp = 1;
+        else if (!strcmp(a, "--home") && has)
+            snprintf(home_dir, sizeof home_dir, "%s", argv[++i]);
         else if (!strcmp(a, "--timeout") && has)
             timeout_s = atoi(argv[++i]);
         else if (!strcmp(a, "--set") && has)
@@ -278,6 +349,46 @@ int main(int argc, char **argv)
 
     if (!romdir || !*romdir)
         romdir = default_romdir;
+
+#ifdef H89_HEADLESS_SESSION
+    /* the session: its own settings and data, the ROMs imported into it,
+     * the configuration from --set, FujiNet started in-process */
+    h89session *sess;
+    {
+        char home[1024], cfgdir[1100], datadir[1100], msg[256];
+        const char *tmp = getenv("TMPDIR");
+        h89session_paths paths;
+        if (!home_dir[0])
+            snprintf(home_dir, sizeof home_dir, "%s/h89-session-run-%ld", tmp && *tmp ? tmp : "/tmp",
+                     (long)time(NULL));
+        snprintf(home, sizeof home, "%s", home_dir);
+        snprintf(cfgdir, sizeof cfgdir, "%s/config", home);
+        snprintf(datadir, sizeof datadir, "%s/data", home);
+        memset(&paths, 0, sizeof paths);
+        paths.config_dir = cfgdir;
+        paths.data_dir = datadir;
+        sess = h89session_new(&paths);
+        if (!sess)
+        {
+            fprintf(stderr, "h89_session_run: cannot create the session in %s\n", home);
+            return 1;
+        }
+        import_rom_dir(sess, romdir, msg, sizeof msg);
+        h89session_set_config(sess, &cfg);
+        h89session_set_int(sess, "enable_audio", 0);
+        h89session_set_int(sess, "machine.warp", warp);
+        if (h89session_start(sess, NULL) != 0)
+        {
+            int skip = strstr(h89session_last_error(sess), "Import") != NULL;
+            fprintf(stderr, "h89_session_run: %s\n", h89session_last_error(sess));
+            h89session_free(sess);
+            return skip ? 77 : 1;
+        }
+        printf("h89_session_run: FujiNet %s; web UI %s\n",
+               h89session_fujinet_running(sess) ? "running" : "NOT running",
+               h89session_fujinet_webui_url(sess));
+    }
+#else
     load_rom_dir(romdir);
 
     const rom_image *mon = rom_by_file(cfg.monitor);
@@ -305,6 +416,7 @@ int main(int argc, char **argv)
         return 1;
     }
     h89host_set_warp(warp);
+#endif
 
     int rc = 0;
     for (int i = first_step; i < argc && rc == 0; i++)
@@ -325,6 +437,22 @@ int main(int argc, char **argv)
             if (!screen_has(v))
             {
                 fprintf(stderr, "h89_headless: timed out waiting for \"%s\"\n", v);
+                print_screen();
+                rc = 1;
+            }
+        }
+        else if (!strcmp(a, "--prompt") && v)
+        {
+            int waited = 0;
+            i++;
+            while (!at_prompt(v) && waited < timeout_s * 1000)
+            {
+                sleep_ms(20);
+                waited += 20;
+            }
+            if (!at_prompt(v))
+            {
+                fprintf(stderr, "h89_headless: timed out waiting for the prompt \"%s\"\n", v);
                 print_screen();
                 rc = 1;
             }
@@ -366,8 +494,16 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--disk") && v)
         {
+            /* a relative path is relative to where we started: the
+             * in-process FujiNet moves the working directory */
+            char spec[3000];
+            const char *eq = strchr(v, '=');
             i++;
-            if (h89drive_insert_spec(v, err, sizeof err) != 0)
+            if (eq && eq[1] != '/' && eq[1] != '\\' && !(eq[1] && eq[2] == ':'))
+                snprintf(spec, sizeof spec, "%.*s%s/%s", (int)(eq - v + 1), v, start_dir, eq + 1);
+            else
+                snprintf(spec, sizeof spec, "%s", v);
+            if (h89drive_insert_spec(spec, err, sizeof err) != 0)
             {
                 fprintf(stderr, "h89_headless: %s: %s\n", v, err);
                 rc = 1;
@@ -380,6 +516,10 @@ int main(int argc, char **argv)
         }
     }
 
+#ifdef H89_HEADLESS_SESSION
+    h89session_free(sess);
+#else
     h89host_stop();
+#endif
     return rc;
 }

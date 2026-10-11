@@ -221,6 +221,16 @@ service(Machine& m, uint64_t slices)
     seen.swap(now);
 }
 
+bool
+createBlankImd(const std::string& path, std::string& err)
+{
+    // an ImageDisk with its header and no tracks: the H89 formats it
+    std::string          hdr = "IMD 1.18: FujiNet Go H89 blank disk\r\n";
+    std::vector<uint8_t> out(hdr.begin(), hdr.end());
+    out.push_back(0x1a);
+    return diskio::writeFile(path, out, err);
+}
+
 void
 protectChanged(Machine& m, int id)
 {
@@ -485,6 +495,37 @@ h89drive_insert_spec(const char* spec, char* err, int errsz)
         return -1;
     }
     return h89drive_insert(H89_DRIVE_ID(ctrl, unit - 1), path.c_str(), flags, err, errsz);
+}
+
+int
+h89image_create_blank(const char* path, int kind, int sides, int tracks, char* err, int errsz)
+{
+    std::string e;
+    bool        ok = false;
+    switch (kind)
+    {
+        case 0: // H89_BLANK_H17_H8D
+            ok = H17Image::create(path, H17Image::FormatH8D, (unsigned) sides, (unsigned) tracks, e);
+            break;
+        case 1: // H89_BLANK_H17_H17D
+            ok = H17Image::create(path, H17Image::FormatH17D, (unsigned) sides, (unsigned) tracks, e);
+            break;
+        case 2: // H89_BLANK_H17_RAW
+            ok = H17Image::create(path, H17Image::FormatRaw, (unsigned) sides, (unsigned) tracks, e);
+            break;
+        case 3: // H89_BLANK_IMD
+            ok = drives_internal::createBlankImd(path, e);
+            break;
+        default:
+            e = "unknown kind of disk";
+            break;
+    }
+    if (!ok)
+    {
+        setErr(err, errsz, e);
+        return -1;
+    }
+    return 0;
 }
 
 } // extern "C"
