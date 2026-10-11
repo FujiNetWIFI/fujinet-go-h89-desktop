@@ -5,6 +5,10 @@
 /// \date Jun 21, 2013
 /// \author Mark Garlanger
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   read-only accessors for the sectors, density and data rate (the TD0
+///   decoder's tracks become core/machine/SoftDisk's).
+///
 
 #ifndef TRACK_H_
 #define TRACK_H_
@@ -75,6 +79,19 @@ class Track
     void dump();
 
     std::shared_ptr<Sector> findSector(BYTE sector);
+
+    const std::vector<std::shared_ptr<Sector> >& sectors() const
+    {
+        return sectors_m;
+    }
+    Density density() const
+    {
+        return density_m;
+    }
+    DataRate dataRate() const
+    {
+        return dataRate_m;
+    }
 
     void startFormat();
 

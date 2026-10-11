@@ -6,6 +6,13 @@
 ///
 /// \author Douglas Miller
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   checkWriteProtect is virtual (an image's tab can change while it is
+///   mounted); densityMatches, trackFormatted and formatTrack let the media
+///   answer per track and take a WD1797 Write Track. The image loader
+///   (loadDiskImage) went with the IMD, sector and raw image classes it
+///   chose between: core/machine/SoftDisk replaces them.
+///
 
 #ifndef GENERICFLOPPYDISK_H_
 #define GENERICFLOPPYDISK_H_
@@ -37,9 +44,36 @@ class GenericFloppyDisk
 
     void setWriteProtect(bool value);
 
-    bool checkWriteProtect()
+    virtual bool checkWriteProtect()
     {
         return writeProtect_m;
+    }
+
+    /// Whether the track under the head (physical track, side) is recorded
+    /// in this density; the controller finds no ID field otherwise.
+    virtual bool densityMatches(bool doubleDensity, BYTE track, BYTE side)
+    {
+        (void) track;
+        (void) side;
+        return doubleDensity == doubleDensity_m;
+    }
+    /// Whether the track has any ID fields at all.
+    virtual bool trackFormatted(BYTE track, BYTE side)
+    {
+        (void) track;
+        (void) side;
+        return true;
+    }
+    /// A WD1797 Write Track: `stream` is every byte the host wrote from index
+    /// to index (F5-F7 still the controller's codes). False: a write fault.
+    virtual bool formatTrack(BYTE track, BYTE side, bool doubleDensity,
+                             const std::vector<BYTE>& stream)
+    {
+        (void) track;
+        (void) side;
+        (void) doubleDensity;
+        (void) stream;
+        return false;
     }
     bool doubleDensity()
     {
@@ -69,26 +103,16 @@ class GenericFloppyDisk
     virtual void dump(void)                    = 0;
     virtual std::string getMediaName();
 
-    enum FileType_t
-    {
-        IMD,
-        TD0,
-        Unknown
-    };
     enum DiskSize_t
     {
         FiveAndQuarterInch,
         EightInch
     };
-    static GenericFloppyDisk_ptr loadDiskImage(std::vector<std::string> argv);
-
     void setDriveType(BYTE numTracks);
 
   private:
 
   protected:
-
-    static FileType_t determineFileType(std::string filename);
 
     std::string imageName_m;
     bool        writeProtect_m;

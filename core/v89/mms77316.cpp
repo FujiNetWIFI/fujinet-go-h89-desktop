@@ -6,7 +6,8 @@
 /// \author Douglas Miller, cloned from h37.cpp by Mark Garlanger
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
-///   Frees its WD1797.
+///   Frees its WD1797. No disks from the properties: the drives API
+///   (core/machine/Drives.cpp) mounts them.
 ///
 
 
@@ -14,8 +15,6 @@
 
 #include "logger.h"
 #include "GenericFloppyDrive.h"
-#include "RawFloppyImage.h"
-#include "SectorFloppyImage.h"
 #include "InterruptController.h"
 #include "wd1797.h"
 
@@ -134,25 +133,6 @@ MMS77316::install_MMS77316(InterruptController*        ic,
             if (mmsdrives[x] != nullptr)
             {
                 m316->connectDrive(x, mmsdrives[x]);
-            }
-        }
-    }
-
-    // Next identify what diskettes are pre-inserted.
-    // TODO: GUI should allow manipulation of diskettes.
-    for (int x = 0; x < numDisks_c; ++x)
-    {
-        std::string prop = "mms77316_disk";
-        prop += ('0' + x + 1);
-        s     = props[prop];
-
-        if (!s.empty())
-        {
-            GenericFloppyDrive* drv = m316->getDrive(x);
-
-            if (drv != nullptr)
-            {
-                drv->insertDisk(SectorFloppyImage::getDiskette(drv, PropertyUtil::splitArgs(s)));
             }
         }
     }

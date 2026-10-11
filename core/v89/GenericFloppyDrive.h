@@ -6,6 +6,12 @@
 /// \date  Feb 1, 2016
 /// \author Douglas Miller
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   verifyTrackSector takes the density and gives the media the physical
+///   track (as readData and writeData do); readAddress fails on an
+///   unformatted track; formatTrack passes a Write Track to the media; the
+///   write-protect state is the media's, live.
+///
 
 #ifndef GENERICFLOPPYDRIVE_H_
 #define GENERICFLOPPYDRIVE_H_
@@ -18,6 +24,7 @@
 
 /// \cond
 #include <memory>
+#include <vector>
 /// \endcond
 
 class GenericFloppyDisk;
@@ -48,8 +55,12 @@ class GenericFloppyDrive: public GenericDiskDrive, public ClockUser
     bool readAddress(int& trackNum,
                      int& sectorNum,
                      int& sideNum);
-    bool verifyTrackSector(BYTE trackNum,
+    bool verifyTrackSector(bool doubleDensity,
+                           BYTE trackNum,
                            BYTE sectorNum);
+    /// The bytes of a Write Track, index to index, to the track under the
+    /// head; false: a write fault.
+    bool formatTrack(bool doubleDensity, const std::vector<BYTE>& stream);
     void step(bool direction);
     void selectSide(BYTE side);
 

@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "h89drives.h"
 #include "session_internal.h"
 
 static const char *ext_of(const char *path, char *buf, size_t bufsz)
@@ -62,10 +63,11 @@ static int imd_is_8inch(FILE *f)
 int h89session_media_kind(const char *path)
 {
     char ext[16];
-    unsigned char head[8], tail[128];
+    unsigned char head[8];
     FILE *f;
     long size;
     int kind = H89_MEDIA_UNKNOWN;
+    int inches = 5;
 
     if (!path || !*path)
         return H89_MEDIA_UNKNOWN;
@@ -93,6 +95,10 @@ int h89session_media_kind(const char *path)
         count_roms_cb_n = 0;
         h89_rom_scan_file(path, count_roms_cb, NULL, NULL, 0);
         return count_roms_cb_n ? H89_MEDIA_ROMS : H89_MEDIA_UNKNOWN;
+    } else if (h89image_soft_probe(path, &inches) >= 2) {
+        /* VirtualH89's sector and raw floppy images (a raw 5.25" FM image
+         * is as long as an H17 raw one: its marks tell them apart) */
+        kind = inches == 8 ? H89_MEDIA_SOFT_8 : H89_MEDIA_SOFT_5;
     } else if (size == 102400 || size == 204800 || size == 409600 ||
                size == 128000 || size == 256000 || size == 512000 ||
                !strcmp(ext, "h8d") || !strcmp(ext, "h17raw") ||
@@ -103,19 +109,8 @@ int h89session_media_kind(const char *path)
         count_roms_cb_n = 0;
         h89_rom_scan_file(path, count_roms_cb, NULL, NULL, 0);
         return count_roms_cb_n ? H89_MEDIA_ROMS : H89_MEDIA_UNKNOWN;
-    } else if (size > 128) {
-        /* VirtualH89's sector image: a geometry header in the last 128
-         * bytes, "5m512z9p2s40t..." -- the m field says the media size */
-        fseek(f, size - 128, SEEK_SET);
-        if (fread(tail, 1, sizeof tail, f) == sizeof tail) {
-            const char *m = memchr(tail, 'm', sizeof tail);
-            if (m && m > (const char *)tail && (m[-1] == '5' || m[-1] == '8') &&
-                memchr(tail, 'z', sizeof tail) && memchr(tail, 't', sizeof tail))
-                kind = m[-1] == '8' ? H89_MEDIA_SOFT_8 : H89_MEDIA_SOFT_5;
-        }
-        if (kind == H89_MEDIA_UNKNOWN &&
-            (!strcmp(ext, "mmsdisk") || !strcmp(ext, "logdisk") || !strcmp(ext, "rawfloppy")))
-            kind = H89_MEDIA_SOFT_5;
+    } else if (!strcmp(ext, "mmsdisk") || !strcmp(ext, "logdisk") || !strcmp(ext, "rawfloppy")) {
+        kind = H89_MEDIA_SOFT_5;
     }
     fclose(f);
     return kind;

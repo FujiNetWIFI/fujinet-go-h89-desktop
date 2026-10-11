@@ -4,6 +4,9 @@
 ///  \author Mark Garlanger
 ///  \date May 2, 2016
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   decodedTracks(): every track as decoded, for core/machine/SoftDisk.
+///
 
 #ifndef TD0FLOPPYDISK_H_
 #define TD0FLOPPYDISK_H_
@@ -27,6 +30,11 @@ class TD0FloppyDisk: public SoftSectoredDisk
 
     static std::shared_ptr<GenericFloppyDisk> getDiskette(std::vector<std::string> argv);
 
+    const std::vector<std::shared_ptr<Track> >& decodedTracks() const
+    {
+        return decoded_m;
+    }
+
   private:
 
     // int           gapLen_m;
@@ -35,6 +43,8 @@ class TD0FloppyDisk: public SoftSectoredDisk
     // bool          trackWrite_m;
 
   protected:
+    std::vector<std::shared_ptr<Track> > decoded_m;
+
     bool readTD0(const char* name);
 
     // LZSS parameters

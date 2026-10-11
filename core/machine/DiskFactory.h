@@ -2,7 +2,7 @@
  * DiskFactory -- opening a soft-sectored image (for the H37 and the
  * MMS 77316, which both put a WD1797 in front of VirtualH89's
  * GenericFloppyDrive) as the object the drive takes plus the DiskImage the
- * host writes back.
+ * host writes back: one SoftDisk (core/machine/SoftDisk.h), both ways.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -15,7 +15,7 @@
 #include <string>
 
 class DiskImage;
-class GenericDiskDrive;
+class GenericFloppyDrive;
 class GenericFloppyDisk;
 
 struct SoftMount
@@ -25,7 +25,7 @@ struct SoftMount
 };
 
 /// Opens `path` for `drive`; false with the reason.
-bool loadSoftImage(const std::string& path, GenericDiskDrive* drive, bool readOnly,
+bool loadSoftImage(const std::string& path, GenericFloppyDrive* drive, bool readOnly,
                    SoftMount& out, std::string& err);
 
 #endif /* H89_DISKFACTORY_H */

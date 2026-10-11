@@ -75,6 +75,11 @@ int h89drive_insert_spec(const char *spec, char *err, int errsz);
 
 const char *h89drive_ctrl_name(int ctrl);
 
+/* Which soft-sectored format `path` holds: 0 IMD, 1 TD0, 2 VirtualH89's
+ * sector image, 3 its raw track image; -1 none. `inches` (may be NULL)
+ * gets 8 when the file says it is an 8" disk, else 5. */
+int h89image_soft_probe(const char *path, int *inches);
+
 /* Writes a new blank image (h89session.h's h89_blank_kind) of the given
  * geometry; 0, or -1 with the reason. */
 int h89image_create_blank(const char *path, int kind, int sides, int tracks,

@@ -67,3 +67,9 @@ h89_add_test(boot_smoke boot_smoke)
 # image (77 without).
 h89_test(hdos_boot_test hdos_boot_test.c)
 h89_add_test(hdos_boot hdos_boot_test)
+
+# Soft-sectored media and the WD1797: the Write Track parser, IMD, TD0,
+# VirtualH89's sector and raw images read, written and written back, and
+# the controller formatting, reading and writing a blank ImageDisk.
+h89_test(soft_disk_test soft_disk_test.cpp)
+h89_add_test(soft_disk soft_disk_test)

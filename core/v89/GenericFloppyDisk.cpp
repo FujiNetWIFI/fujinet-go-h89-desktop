@@ -5,13 +5,14 @@
 /// \date Feb 2, 2016
 /// \author Douglas Miller
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   loadDiskImage and determineFileType removed (core/machine/SoftDisk).
+///
 
 #include <algorithm>
 
 #include "GenericFloppyDisk.h"
 
-#include "IMDFloppyDisk.h"
-#include "TD0FloppyDisk.h"
 #include "logger.h"
 
 using namespace std;
@@ -32,69 +33,6 @@ GenericFloppyDisk::GenericFloppyDisk(): writeProtect_m(false),
 GenericFloppyDisk::~GenericFloppyDisk()
 {
 }
-
-GenericFloppyDisk::FileType_t
-GenericFloppyDisk::determineFileType(std::string filename)
-{
-    // Currently just using file extension to choose
-
-    // look for last period
-    size_t pos = filename.rfind('.');
-
-    // check if none was found.
-    if (pos == string::npos)
-    {
-        return Unknown;
-    }
-
-    // extract the extension
-    std::string extension = filename.substr(pos + 1);
-
-    // convert to lower case.
-    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-
-    if (extension == "imd")
-    {
-        return IMD;
-    }
-
-    if (extension == "td0")
-    {
-        return TD0;
-    }
-
-    // Doesn't match an existing known format.
-    return Unknown;
-}
-
-
-GenericFloppyDisk_ptr
-GenericFloppyDisk::loadDiskImage(vector<string> argv)
-{
-
-    if (argv.size() < 1)
-    {
-        debugss(ssFloppyDisk, WARNING, "no file specified\n");
-        return nullptr;
-    }
-
-    string     filename(argv[0]);
-
-    FileType_t fileType = determineFileType(filename);
-
-    switch (fileType)
-    {
-        case IMD:
-            return IMDFloppyDisk::getDiskette(argv);
-
-        case TD0:
-            return TD0FloppyDisk::getDiskette(argv);
-
-        case Unknown:
-            return nullptr;
-    }
-}
-
 
 void
 GenericFloppyDisk::setDriveType(BYTE numTracks)

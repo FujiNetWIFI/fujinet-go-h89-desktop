@@ -4,6 +4,9 @@
 ///  \author Mark Garlanger
 ///  \date   May 2, 2016
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
+///   each decoded track is also kept in decoded_m.
+///
 
 #include <cstring>
 
@@ -677,6 +680,7 @@ TD0FloppyDisk::readTD0(const char* name)
             // add track to disk
 
             sideData_m[side]->addTrack(trk);
+            decoded_m.push_back(trk);
         }
     }
     while (!done);

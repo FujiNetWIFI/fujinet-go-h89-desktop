@@ -6,6 +6,9 @@
 /// \date Feb 2, 2016
 /// \author Douglas Miller
 ///
+/// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later): see the
+/// header.
+///
 
 #include "GenericFloppyDrive.h"
 
@@ -176,7 +179,7 @@ GenericFloppyDrive::readData(bool dd,
         return GenericFloppyFormat::ERROR;
     }
 
-    if (dd != disk_m->doubleDensity())
+    if (!disk_m->densityMatches(dd, track_m, headSel_m))
     {
         debugss(ssGenericFloppyDrive, WARNING, "DD mismatch(%d)\n", dd);
         return GenericFloppyFormat::ERROR;
@@ -227,7 +230,7 @@ GenericFloppyDrive::writeData(bool dd,
         }
     }
 
-    else if (dd != disk_m->doubleDensity())
+    else if (!disk_m->densityMatches(dd, track_m, headSel_m))
     {
         return GenericFloppyFormat::ERROR;
     }
@@ -292,6 +295,11 @@ GenericFloppyDrive::readAddress(int& trackNum,
         return false;
     }
 
+    if (!disk_m->trackFormatted(track_m, headSel_m))
+    {
+        return false;
+    }
+
     // consult media to see if it knows.
     trackNum  = disk_m->getRealTrackNumber(track_m);
     sectorNum = 0; // TODO: use charPos and media to approximate
@@ -301,7 +309,8 @@ GenericFloppyDrive::readAddress(int& trackNum,
 
 
 bool
-GenericFloppyDrive::verifyTrackSector(BYTE trackNum,
+GenericFloppyDrive::verifyTrackSector(bool doubleDensity,
+                                      BYTE trackNum,
                                       BYTE sectorNum)
 {
     if (disk_m == nullptr || !motor_m)
@@ -319,7 +328,14 @@ GenericFloppyDrive::verifyTrackSector(BYTE trackNum,
         return false;
     }
 
-    return disk_m->findSector(headSel_m, realTrackNum, sectorNum);
+    // no ID fields in the other density
+    if (!disk_m->densityMatches(doubleDensity, track_m, headSel_m))
+    {
+        return false;
+    }
+
+    // the media maps the physical track itself, as for readData
+    return disk_m->findSector(headSel_m, track_m, sectorNum);
 }
 
 void
@@ -364,13 +380,23 @@ GenericFloppyDrive::startTrackFormat(BYTE trackNum)
 
 }
 
+bool
+GenericFloppyDrive::formatTrack(bool doubleDensity, const std::vector<BYTE>& stream)
+{
+    if (disk_m == nullptr || disk_m->checkWriteProtect())
+    {
+        return false;
+    }
+    return disk_m->formatTrack(track_m, headSel_m, doubleDensity, stream);
+}
+
 void
 GenericFloppyDrive::getDriveStatus(bool& writeProtected,
                                    bool& headLoaded,
                                    bool& trackZero,
                                    bool& indexPulse)
 {
-    writeProtected = writeProtected_m;
+    writeProtected = isWriteProtect();
     headLoaded     = headLoaded_m;
     trackZero      = (track_m == 0);
     indexPulse     = indexPulse_m;

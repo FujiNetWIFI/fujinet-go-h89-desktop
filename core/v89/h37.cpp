@@ -4,7 +4,8 @@
 /// \author Mark Garlanger
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
-///   Frees its WD1797.
+///   Frees its WD1797. No disks from the properties: the drives API
+///   (core/machine/Drives.cpp) mounts them.
 ///
 
 #include "h37.h"
@@ -91,15 +92,6 @@ Z_89_37::install_H37(Computer*                   computer,
             {
 
                 z37->connectDrive(i, drive);
-
-                prop  = "h37_disk";
-                prop += ('0' + i + 1);
-                s     = props[prop];
-
-                if (!s.empty())
-                {
-                    drive->insertDisk(GenericFloppyDisk::loadDiskImage(PropertyUtil::splitArgs(s)));
-                }
 
             }
 

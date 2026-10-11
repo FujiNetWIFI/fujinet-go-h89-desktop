@@ -11,6 +11,7 @@
 #include "DiskFactory.h"
 #include "DiskImage.h"
 #include "GenericFloppyDrive.h"
+#include "SoftDisk.h"
 #include "GenericSASIDrive.h"
 #include "H17Image.h"
 #include "Machine.h"
@@ -225,10 +226,7 @@ bool
 createBlankImd(const std::string& path, std::string& err)
 {
     // an ImageDisk with its header and no tracks: the H89 formats it
-    std::string          hdr = "IMD 1.18: FujiNet Go H89 blank disk\r\n";
-    std::vector<uint8_t> out(hdr.begin(), hdr.end());
-    out.push_back(0x1a);
-    return diskio::writeFile(path, out, err);
+    return SoftDisk::createBlankImd(path, err);
 }
 
 void
@@ -495,6 +493,30 @@ h89drive_insert_spec(const char* spec, char* err, int errsz)
         return -1;
     }
     return h89drive_insert(H89_DRIVE_ID(ctrl, unit - 1), path.c_str(), flags, err, errsz);
+}
+
+int
+h89image_soft_probe(const char* path, int* inches)
+{
+    SoftDisk::Format fmt;
+    if (inches)
+    {
+        *inches = 5;
+    }
+    if (!path || !SoftDisk::probe(path, fmt))
+    {
+        return -1;
+    }
+    if (inches && (fmt == SoftDisk::FormatSector || fmt == SoftDisk::FormatRaw))
+    {
+        std::string err;
+        auto        d = SoftDisk::load(path, 5, 80, true, err);
+        if (d && d->cylinders() == 77)
+        {
+            *inches = 8;
+        }
+    }
+    return (int) fmt;
 }
 
 int

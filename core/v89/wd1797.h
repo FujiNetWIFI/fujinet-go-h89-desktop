@@ -13,6 +13,10 @@
 
 #include "h89Types.h"
 
+/// \cond
+#include <vector>
+/// \endcond
+
 class GenericFloppyDrive;
 class WD179xUserIf;
 
@@ -352,7 +356,13 @@ class WD1797: public ClockUser
         fs_writing
     };
 
-    FormattingState formattingState_m;
+    FormattingState   formattingState_m;
+    std::vector<BYTE> trackStream_m;   ///< Write Track: the bytes since the index
+
+    /// Write Sector / Write Track on a protected disk: the command ends at
+    /// once with Write Protect set; true when it did.
+    bool refuseWriteProtected();
+    void finishWriteTrack();
 
     bool            doubleDensity_m;
     bool            immediateInterruptSet_m;

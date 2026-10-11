@@ -7,6 +7,12 @@
 ///
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
 ///   The global h89 replaced by the machine context.
+///   Write Sector and Write Track on a write-protected disk end at once with
+///   Write Protect (they waited forever). Write Track is implemented: from
+///   one index pulse to the next, every byte the host supplies (00 and Lost
+///   Data where it is late) goes to the media, which parses it
+///   (GenericFloppyDrive::formatTrack). Read/Write Sector check the ID
+///   fields in the controller's density.
 ///
 
 #include "wd1797.h"
@@ -364,6 +370,10 @@ WD1797::processCmdTypeII(BYTE cmd)
 
         debugss(ssWD1797, INFO, "Write Sector - \n");
         curCommand_m = writeSectorCmd;
+        if (refuseWriteProtected())
+        {
+            return;
+        }
     }
     else
     {
@@ -402,8 +412,16 @@ WD1797::processCmdTypeIII(BYTE cmd)
         // write Track
         debugss(ssWD1797, ERROR, "Write Track: %d\n", trackReg_m);
 
-        currentDrive_m->startTrackFormat(trackReg_m);
-        curCommand_m      = writeTrackCmd;
+        curCommand_m = writeTrackCmd;
+        if (refuseWriteProtected())
+        {
+            return;
+        }
+        if (currentDrive_m)
+        {
+            currentDrive_m->startTrackFormat(trackReg_m);
+        }
+        trackStream_m.clear();
         formattingState_m = fs_waitingForIndex;
         raiseDrq();
     }
@@ -513,6 +531,30 @@ WD1797::verifyTrack(GenericFloppyDrive* drive)
         debugss(ssWD1797, INFO, "seekCmd no drive: %d\n", trackReg_m);
         statusReg_m |= stat_SeekError_c;
     }
+}
+
+bool
+WD1797::refuseWriteProtected()
+{
+    if (currentDrive_m && currentDrive_m->isWriteProtect())
+    {
+        statusReg_m |= stat_WriteProtect_c;
+        completeCmd();
+        return true;
+    }
+    return false;
+}
+
+void
+WD1797::finishWriteTrack()
+{
+    if (!currentDrive_m || !currentDrive_m->formatTrack(doubleDensity_m, trackStream_m))
+    {
+        statusReg_m |= stat_WriteFault_c;
+    }
+    trackStream_m.clear();
+    lowerDrq();
+    completeCmd();
 }
 
 void
@@ -920,7 +962,7 @@ WD1797::cmdTypeII_Notification(unsigned int cycleCount)
 
             // only check for correct sector at the start of the sector.
             if (sectorPos_m == InitialSectorPos_c &&
-                !currentDrive_m->verifyTrackSector(trackReg_m, sectorReg_m))
+                !currentDrive_m->verifyTrackSector(doubleDensity_m, trackReg_m, sectorReg_m))
             {
                 debugss(ssWD1797, WARNING, "sector not found track: %d, sector: %d\n", trackReg_m,
                         sectorReg_m);
@@ -979,7 +1021,7 @@ WD1797::cmdTypeII_Notification(unsigned int cycleCount)
 
             // only check for correct sector at the start of the sector.
             if (sectorPos_m == InitialSectorPos_c &&
-                !currentDrive_m->verifyTrackSector(trackReg_m, sectorReg_m))
+                !currentDrive_m->verifyTrackSector(doubleDensity_m, trackReg_m, sectorReg_m))
             {
                 statusReg_m |= stat_RecordNotFound_c;
                 completeCmd();
@@ -1070,8 +1112,22 @@ WD1797::cmdTypeIII_Notification(unsigned int cycleCount)
             {
                 lastIndexStatus_m = true;
                 ++indexCount_m;
+                if (curCommand_m == writeTrackCmd && formattingState_m == fs_writing)
+                {
+                    // the second index: the track is written
+                    finishWriteTrack();
+                    return;
+                }
                 if (formattingState_m == fs_waitingForIndex)
                 {
+                    if (curCommand_m == writeTrackCmd && !dataReady_m)
+                    {
+                        // nothing to write at the index: Lost Data, and the
+                        // command ends without writing
+                        statusReg_m |= stat_LostData_c;
+                        completeCmd();
+                        return;
+                    }
                     formattingState_m = fs_writing;
                 }
             }
@@ -1223,43 +1279,23 @@ WD1797::cmdTypeIII_Notification(unsigned int cycleCount)
         case writeTrackCmd:
             currentDrive_m->selectSide(side_m);
 
-            // \todo
-            result = currentDrive_m->writeData(doubleDensity_m, trackReg_m, side_m, 0xff,
-                                               sectorPos_m, dataReg_m, dataReady_m);
-
-            if (result == GenericFloppyFormat::NO_DATA)
+            if (formattingState_m != fs_writing)
             {
-                // out of paranoia, but must be careful
-                if (sectorPos_m >= 0 && !drqRaised_m)
-                {
-                    raiseDrq();
-                }
-
-                // just wait for sector to come around..
+                // DRQ is up; the first byte goes out at the index
+                break;
             }
-            else if (result == GenericFloppyFormat::INDEX_AM)
+            if (!dataReady_m)
             {
-                sectorPos_m = 0;
-            }
-            else if (result == GenericFloppyFormat::CRC)
-            {
-                sectorPos_m = ErrorSectorPos_c;
-                completeCmd();
-            }
-            else if (result < 0)
-            {
-                // other errors
-                debugss(ssWD1797, WARNING, "Error in write track\n");
-                sectorPos_m  = ErrorSectorPos_c;
-                statusReg_m |= stat_WriteFault_c;
-                completeCmd();
+                // the host was late: a 00 goes on the disk
+                statusReg_m |= stat_LostData_c;
+                trackStream_m.push_back(0x00);
             }
             else
             {
-                dataReady_m = false;
-                ++sectorPos_m;
-                raiseDrq();
+                trackStream_m.push_back(dataReg_m);
             }
+            dataReady_m = false;
+            raiseDrq();
             break;
 
         default:
