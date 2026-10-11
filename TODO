@@ -84,7 +84,25 @@ M3  disks                                                             [~]
       HDOS INIT on a blank .h8d, PIP a file to it, a fresh boot TYPEs it
   [ ] CP/M FORMAT on IMD in the H37 and the MMS 77316 (needs CP/M boot
       disks for them; none public found yet)
-M4  session + GNOME + KDE                                             [ ]
+M1b/M4  GNOME frontend                                                [~]
+  [x] display (640x500, 4:3 or square, smooth), keyboard through the
+      session's table (CTRL is the H19's; app shortcuts are CTRL+SHIFT),
+      first-run ROM import (asks for MAME's sets, starts when complete)
+  [x] menu: Machine (Reset, Power Cycle, Warp, Import ROMs), Drives (per
+      drive Insert/Eject/Write Protect, Insert Disk, New Blank Disk, Open
+      Disks Folder), Copy Screen Text, Paste, H19 Keys (F9), Fullscreen
+      (F11), FujiNet (web UI, console log, restart), Preferences, About
+  [x] Preferences: Machine, Slots & Drives, Switches (SW501 per monitor,
+      auto from the slots; SW401; SW402), CP/NET, Display & Sound,
+      FujiNet; validated as a whole on close, power cycle on request
+  [x] H19 Keys panel: every H19-only key, SHIFT latch, mode lights
+  [x] drag and drop / a file on the command line: ROMs, disks (asks which
+      drive when they are full), anything else to FujiNet's SD folder
+  verify: grim screenshots (Hyprland): MTR-90 prompt, typing B+RETURN,
+      HDOS 2.0 booted from a disk named on the command line with the date
+      pasted, H19 Keys, Preferences pages; desktop/metainfo validators
+  [ ] debugger window (M5)
+M4  KDE frontend                                                      [ ]
 M5  debugger                                                          [ ]
 M6  Windows frontend                                                  [ ]
 M7  macOS frontend                                                    [ ]

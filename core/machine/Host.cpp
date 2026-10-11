@@ -534,6 +534,27 @@ h89host_screen_text(char* dst, size_t dstsz, int line25)
     return n;
 }
 
+unsigned
+h89host_h19_modes(void)
+{
+    unsigned m = 0;
+    if (!s_running.load())
+    {
+        return 0;
+    }
+    h89host_lock();
+    if (s_machine)
+    {
+        H19Terminal::Modes t = s_machine->terminal().modes();
+        m = (t.offline ? 0x01u : 0) | (t.holdScreen ? 0x02u : 0) |
+            (t.keypadShifted ? 0x04u : 0) | (t.altKeypad ? 0x08u : 0) |
+            (t.keyboardDisabled ? 0x10u : 0) | (t.graphics ? 0x20u : 0) |
+            (t.insert ? 0x40u : 0) | (t.reverseVideo ? 0x80u : 0);
+    }
+    h89host_unlock();
+    return m;
+}
+
 size_t
 h89host_text_before_cursor(char* dst, size_t dstsz)
 {

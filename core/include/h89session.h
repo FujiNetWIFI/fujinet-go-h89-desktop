@@ -219,6 +219,19 @@ int    h89session_paste_pending(h89session *s);
  * length, 0 when stopped. */
 size_t h89session_screen_text(h89session *s, char *dst, size_t dstsz, int line25);
 
+/* The H19's modes, for the H19 Keys panel's lights (0 when stopped). */
+enum {
+    H89_H19_OFFLINE         = 0x01,   /* OFF LINE: keys go to the screen */
+    H89_H19_HOLD_SCREEN     = 0x02,   /* hold-screen mode (SCROLL releases) */
+    H89_H19_KEYPAD_SHIFTED  = 0x04,   /* ESC t / SW402 */
+    H89_H19_ALT_KEYPAD      = 0x08,   /* ESC = */
+    H89_H19_KEYBOARD_OFF    = 0x10,   /* ESC } */
+    H89_H19_GRAPHICS        = 0x20,   /* ESC F */
+    H89_H19_INSERT          = 0x40,   /* ESC @ */
+    H89_H19_REVERSE         = 0x80,   /* ESC p */
+};
+unsigned h89session_h19_modes(h89session *s);
+
 /* ---- drives ---------------------------------------------------------------------
  * The running machine's drives (h89drives.h), with the session's memory:
  * whatever a drive holds is remembered (drive.<id>.path / .wp) and put back

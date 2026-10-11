@@ -81,6 +81,8 @@ size_t h89host_screen_text(char *dst, size_t dstsz, int line25);
 /* The cursor's line up to the cursor (graphics characters as '?'): what a
  * script waits on for a prompt. Returns the length. */
 size_t h89host_text_before_cursor(char *dst, size_t dstsz);
+/* The H19's modes as h89session.h's H89_H19_* flags (0 when stopped). */
+unsigned h89host_h19_modes(void);
 
 /* Runs without sleeping; FujiNet traffic still runs at real time (the
  * H89's FujiNet timeouts count its own 2 ms ticks). */

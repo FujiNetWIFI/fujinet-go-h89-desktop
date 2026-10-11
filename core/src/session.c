@@ -373,6 +373,12 @@ size_t h89session_screen_text(h89session *s, char *dst, size_t dstsz, int line25
     return h89host_screen_text(dst, dstsz, line25);
 }
 
+unsigned h89session_h19_modes(h89session *s)
+{
+    (void)s;
+    return h89host_h19_modes();
+}
+
 /* ---- drives -------------------------------------------------------------------- */
 
 int h89session_drive_count(h89session *s)
@@ -474,12 +480,14 @@ int h89session_card_link(h89session *s)
 const char *h89session_card_link_text(int link)
 {
     switch (link) {
-    case 0: return "no FujiNet runtime";
-    case 1: return "waiting for FujiNet";
-    case 2: return "connected";
-    case 3: return "ESP32 held in reset";
-    case 4: return "ESP32 in its ROM loader";
-    default: return "no FujiNet card";
+    case 0: return "FujiNet is not running";
+    case 1: return "FujiNet: connecting\xe2\x80\xa6";
+    case 2: return "FujiNet: connected";
+    /* the 82C55 holds the ESP32's EN low from power-on until a program
+     * runs fujinet-lib's port_init: idle, not broken */
+    case 3: return "FujiNet card idle until a program starts it";
+    case 4: return "FujiNet card: ESP32 in its ROM loader";
+    default: return "No FujiNet card";
     }
 }
 

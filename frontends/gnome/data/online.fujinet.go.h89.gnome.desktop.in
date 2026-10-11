@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FujiNet Go H89
+GenericName=Heathkit H89 Emulator
+Comment=A Heathkit H89 with a FujiNet card
+Exec=fujinet-go-h89-gnome %f
+Icon=online.fujinet.go.h89.gnome
+Terminal=false
+Categories=System;Emulator;
+Keywords=h89;h88;heathkit;heath;zenith;z-89;h19;hdos;cp/m;fujinet;emulator;retro;
+MimeType=application/x-h89-disk;
+StartupNotify=true
