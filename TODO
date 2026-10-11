@@ -191,7 +191,9 @@ M10 polish, family audit                                              [~]
   [x] keys: SHIFT+ERASE clears the display, IC toggles insert mode
   verify: machine test (single step returns to 0051), h19_escape (ANSI
       sequences, ANSI keys, hold screen with XOFF/XON)
-  [ ] README "How this was verified"; family audit against sms; memory note
+  [x] README: keys, cross-building Windows, "How this was verified" (with
+      what is not), cutting a release
+  [ ] family audit against sms; memory note
 
 Notes / gotchas
 ---------------
