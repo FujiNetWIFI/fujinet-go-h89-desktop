@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>online.fujinet.go.h89.kde</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>FujiNet Go H89</name>
+  <summary>A Heathkit H89 with a FujiNet card</summary>
+  <description>
+    <p>
+      A self-contained Heathkit H89 with the H89 FujiNet card fitted: HDOS
+      and CP/M programs built with fujinet-lib reach the network through
+      the card, and the FujiNet they talk to runs inside the application.
+    </p>
+    <p>
+      The emulator is VirtualH89, adapted: the H89 or H88 with up to 64K or
+      the MMS 77318's 128K, the H19 terminal with its keyboard, keypad and
+      escape sequences, the H17 hard-sectored controller, the Z-89-37 and
+      MMS 77316 soft-sectored controllers, the MMS 77320 SASI hard disk,
+      the three-port serial card and CP/NET to a folder on the computer.
+    </p>
+    <p>
+      Disks are ordinary files: H17 images (.h8d, .h17 and raw tracks),
+      ImageDisk (.imd) and Teledisk (.td0) images, and VirtualH89's own
+      formats. Every write goes back to its file, and the H89 can format
+      new disks. Disks, ROM sets and other files can be dropped on the
+      window.
+    </p>
+    <p>
+      The Heath ROMs are not included: the application asks for MAME's
+      h89 and heath_tlb ROM sets on first start, and recognises them by
+      their contents.
+    </p>
+  </description>
+  <launchable type="desktop-id">online.fujinet.go.h89.kde.desktop</launchable>
+  <url type="homepage">https://fujinet.online/</url>
+  <url type="bugtracker">https://github.com/tschak909/fujinet-go-h89-desktop/issues</url>
+  <url type="vcs-browser">https://github.com/tschak909/fujinet-go-h89-desktop</url>
+  <developer id="online.fujinet">
+    <name>Thomas Cherryhomes</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <screenshots>
+    <screenshot type="default">
+      <caption>HDOS 2.0 running fujinet-lib's FujiNet tests on the H19</caption>
+      <image>https://raw.githubusercontent.com/tschak909/fujinet-go-h89-desktop/main/data/screenshots/1_hdos_fujidev.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <!-- The CURRENT release templates its version from @PROJECT_VERSION@, so
+         it cannot disagree with the tree; past releases are literal. The
+         release job checks that this first entry is still a template. -->
+    <release version="@PROJECT_VERSION@" date="2026-10-11">
+      <description>
+        <p>
+          First release: VirtualH89's H89 with the FujiNet card and an
+          in-process FujiNet; H17, Z-89-37, MMS 77316 and MMS 77320 disks
+          with every write kept; native GNOME, KDE, macOS and Windows
+          frontends and a native debugger.
+        </p>
+      </description>
+    </release>
+  </releases>
+</component>

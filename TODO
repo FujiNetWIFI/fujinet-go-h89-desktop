@@ -102,7 +102,15 @@ M1b/M4  GNOME frontend                                                [~]
       HDOS 2.0 booted from a disk named on the command line with the date
       pasted, H19 Keys, Preferences pages; desktop/metainfo validators
   [ ] debugger window (M5)
-M4  KDE frontend                                                      [ ]
+M4  KDE frontend                                                      [~]
+  [x] Qt6 Widgets at GNOME parity: display, keys (KeyForward through the
+      session's Qt table), menus (Machine, Drives rebuilt as it opens,
+      Edit, View, FujiNet, Help), Preferences in six tabs (OK refuses a
+      configuration that cannot be built, and says why), H19 Keys window,
+      ROM setup, New Blank Disk, drag and drop, visual bell
+  verify: HDOS 2.0 boots in it from the remembered disk, date pasted;
+      desktop/metainfo validators
+  [ ] debugger window (M5)
 M5  debugger                                                          [ ]
 M6  Windows frontend                                                  [ ]
 M7  macOS frontend                                                    [ ]
