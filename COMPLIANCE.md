@@ -103,6 +103,7 @@ release workflow builds it with `tools/disks/make-fujinet-disks.sh`:
 | Disk | Origin | Licence |
 |---|---|---|
 | `fujinet-hdos-N.h8d`, `fujinet-cpm-N.h8d` | fujinet-lib's integration tests (`testing/`), built by the release workflow at a pinned fujinet-lib commit with z88dk | GPL-3.0; the zip carries `LICENSE.fujinet-lib` and names the source commit |
+| `FNON.COM`, `FNON.ASM` on a `fujinet-cpm-N.h8d` | this project's `tools/disks/fnon/`, which starts the card on a real H89; `FNON.COM` is committed, assembled with the 64K CP/M disk's own ASM and LOAD | GPL-3.0-or-later |
 | `hdos-2.0.h17disk` | HDOS 2.0, Mark Garlanger's capture of the distribution disk (heathkit.garlanger.com/software/OSes/HDOS/2.0/), unchanged | public domain: the page says "This software was placed in the public domain." |
 | `cpm-2.2.04-64k.h8d` | Heath/Zenith CP/M 2.2.04 for the H17 (Digital Research's CP/M 2.2 with Heath's BIOS and utilities): disk 1 of `CPM_2_2_04_Update.zip` from the Society of Eight-Bit Heath Computerists' archive (sebhc.github.io/sebhc/software.html), configured as a standard system and rebuilt for 64K with its own MOVCPM17 and SYSGEN | none stated |
 
@@ -110,8 +111,10 @@ The two boot disks are committed in `tools/disks/boot/`; they are the only
 disks in the repository. CI cannot rebuild the 64K CP/M disk, because that
 means booting it, and CI has no Heath ROMs. `make-fujinet-disks.sh
 --rebuild-cpm-boot` rebuilds it, byte for byte, on a machine that has the
-ROMs. Shipping CP/M 2.2.04 was the maintainer's decision (2026-10-11): it is
-not under a stated licence, but SEBHC's archive distributes it.
+ROMs. `FNON.COM` is committed for the same reason, and `--rebuild-fnon`
+remakes it the same way. Shipping CP/M 2.2.04 was the maintainer's
+decision (2026-10-11): it is not under a stated licence, but SEBHC's
+archive distributes it.
 
 `tools/disks/fetch-disks.sh` downloads the rest of the HDOS 2.0 distribution
 and SEBHC's CP/M disks into the gitignored `tools/disks/images/` for the

@@ -10,7 +10,9 @@
 # take, and the boot disks to run them from:
 #
 #   fujinet-hdos-N.h8d     HDOS data disks: MOUNT SY1: then RUN SY1:FUJIDEV
-#   fujinet-cpm-N.h8d      CP/M data disks: B:FUJIDEV
+#   fujinet-cpm-N.h8d      CP/M data disks: B:FUJIDEV; one also has FNON.COM,
+#                          which starts the card on a real H89, and its
+#                          source FNON.ASM (tools/disks/fnon/)
 #   hdos-2.0.h17disk       HDOS 2.0
 #   cpm-2.2.04-64k.h8d     CP/M 2.2.04 rebuilt as a 64K system; the
 #                          distribution disk is a 32K one, too small for the
@@ -24,6 +26,8 @@
 # disk (tools/disks/fetch-disks.sh) the way a user would -- CONFIGUR, then
 # MOVCPM17 64 * and SYSGEN -- which needs a build
 # (build/core/h89_session_run) and the Heath ROMs, so CI cannot.
+# --rebuild-fnon remakes tools/disks/fnon/FNON.COM from FNON.ASM with that
+# disk's own ASM and LOAD, under the same conditions.
 #
 # Needs z88dk's appmake (on PATH, or $APPMAKE) and python3. The disks are
 # checked with tools/disks/check-fujinet-disks.py before they are written.
@@ -31,6 +35,7 @@
 #
 #   tools/disks/make-fujinet-disks.sh [--out DIR] [--lib DIR] [--force]
 #   tools/disks/make-fujinet-disks.sh --rebuild-cpm-boot [--roms DIR] [--build DIR]
+#   tools/disks/make-fujinet-disks.sh --rebuild-fnon [--roms DIR] [--build DIR]
 #
 # --out defaults to tools/disks/images/fujinet (gitignored); the app's own
 # disks folder (Drives > Open Disks Folder) is a handy alternative.
@@ -47,9 +52,11 @@ ROMS="${ROOT}/tools/roms"
 BUILD="${ROOT}/build"
 FORCE=0
 REBUILD_CPM=0
+REBUILD_FNON=0
 usage() {
     echo "usage: $0 [--out DIR] [--lib DIR] [--force]" >&2
     echo "       $0 --rebuild-cpm-boot [--roms DIR] [--build DIR]" >&2
+    echo "       $0 --rebuild-fnon [--roms DIR] [--build DIR]" >&2
     exit 2
 }
 while [[ $# -gt 0 ]]; do
@@ -60,6 +67,7 @@ while [[ $# -gt 0 ]]; do
         --build) BUILD="$2"; shift 2 ;;
         --force) FORCE=1; shift ;;
         --rebuild-cpm-boot) REBUILD_CPM=1; shift ;;
+        --rebuild-fnon) REBUILD_FNON=1; shift ;;
         *) usage ;;
     esac
 done
@@ -67,6 +75,14 @@ done
 BOOT="${ROOT}/tools/disks/boot"
 HDOS_BOOT="${BOOT}/hdos-2.0.h17disk"
 CPM_BOOT="${BOOT}/cpm-2.2.04-64k.h8d"
+FNON="${ROOT}/tools/disks/fnon"
+APPMAKE="${APPMAKE:-$(command -v z88dk-appmake || echo "${HOME:-}/Workspace/z88dk/bin/z88dk-appmake")}"
+
+# CP/M wants text as CR LF lines ended by a ^Z
+cpm_text() {
+    sed 's/$/\r/' "$1" > "$2"
+    printf '\032' >> "$2"
+}
 
 # The 64K CP/M disk, from disk 1 of SEBHC's CP/M 2.2.04 update
 if [[ ${REBUILD_CPM} -eq 1 ]]; then
@@ -98,9 +114,70 @@ if [[ ${REBUILD_CPM} -eq 1 ]]; then
     exit 0
 fi
 
+# FNON.COM, from FNON.ASM by the 64K CP/M disk's own ASM and LOAD
+if [[ ${REBUILD_FNON} -eq 1 ]]; then
+    RUN="${BUILD}/core/h89_session_run"
+    [[ -e "${RUN}" ]] || { echo "missing: ${RUN} (a build)" >&2; exit 1; }
+    [[ -x "${APPMAKE}" ]] || { echo "missing: z88dk-appmake (set APPMAKE)" >&2; exit 1; }
+    WORK="$(mktemp -d "${TMPDIR:-/tmp}/h89-fnon-XXXXXX")"
+    trap 'rm -rf "${WORK}"' EXIT
+    cp "${CPM_BOOT}" "${WORK}/cpm.h8d"
+    cpm_text "${FNON}/FNON.ASM" "${WORK}/FNON.ASM"
+    # appmake starts a disk with a program, so a one-byte RET carries the source
+    printf '\311' > "${WORK}/STUB.COM"
+    (cd "${WORK}" && "${APPMAKE}" +cpmdisk -f hz89 --container raw --no-com-file \
+        -b STUB.COM -a FNON.ASM -o src) > /dev/null
+    "${RUN}" --roms "${ROMS}" --home "${WORK}/home" --timeout 120 \
+        --disk "h17:1=${WORK}/cpm.h8d" --disk "h17:2=${WORK}/src" \
+        --until 'H:' --type 'B\r' --until 'A>' --wait 1000 \
+        --prompt 'A>' --type 'ASM B:FNON\r' --until 'END OF ASSEMBLY' --screen \
+        --prompt 'A>' --type 'LOAD B:FNON\r' --until 'RECORDS WRITTEN' \
+        --prompt 'A>' --wait 500 > "${WORK}/asm.log" 2>&1 \
+        || { tail -5 "${WORK}/asm.log" >&2; echo "ASM or LOAD failed (ROMs in ${ROMS}?)" >&2; exit 1; }
+    # ASM echoes each line it flags between its banner and END OF ASSEMBLY;
+    # a clean run prints only the next address and the use factor there
+    listing="$(sed -n '/CP\/M ASSEMBLER/,/END OF ASSEMBLY/p' "${WORK}/asm.log" \
+        | sed 's/^\[fujinet\] //')"
+    if ! grep -q 'CP/M ASSEMBLER' <<< "${listing}" \
+            || grep -vE 'CP/M ASSEMBLER|^[0-9A-F]{4}$|USE FACTOR|END OF ASSEMBLY' <<< "${listing}" \
+            | grep -q .; then
+        echo "${listing}" >&2
+        echo "ASM reported errors in FNON.ASM" >&2
+        exit 1
+    fi
+    python3 -I - "${WORK}/src" "${WORK}/FNON.COM" <<'EOF'
+import sys
+# hz89: 3 boot tracks of 10 skewed 256-byte sectors, 1K blocks, the
+# directory in the first two
+SKEW = [0, 4, 8, 2, 6, 1, 5, 9, 3, 7]
+image = open(sys.argv[1], 'rb').read()
+
+def sector(n):
+    off = ((3 + n // 10) * 10 + SKEW[n % 10]) * 256
+    return image[off:off + 256]
+
+directory = b''.join(sector(n) for n in range(8))
+for e in range(0, len(directory), 32):
+    entry = directory[e:e + 32]
+    if entry[0] <= 15 and entry[1:12] == b'FNON    COM' and entry[15]:
+        blocks = [b for b in entry[16:32] if b]
+        data = b''.join(sector(4 * b + i) for b in blocks for i in range(4))
+        open(sys.argv[2], 'wb').write(data[:entry[15] * 128])
+        break
+else:
+    sys.exit('LOAD left no FNON.COM on the disk')
+EOF
+    if cmp -s "${WORK}/FNON.COM" "${FNON}/FNON.COM"; then
+        echo "${FNON}/FNON.COM: unchanged"
+    else
+        cp "${WORK}/FNON.COM" "${FNON}/FNON.COM"
+        echo "wrote ${FNON}/FNON.COM"
+    fi
+    exit 0
+fi
+
 HDOS_SRC="${LIB}/testing/r2r/h89-hdos"
 CPM_SRC="${LIB}/testing/r2r/h89-cpm"
-APPMAKE="${APPMAKE:-$(command -v z88dk-appmake || echo "${HOME:-}/Workspace/z88dk/bin/z88dk-appmake")}"
 [[ -x "${APPMAKE}" ]] || { echo "missing: z88dk-appmake (set APPMAKE)" >&2; exit 1; }
 shopt -s nullglob
 abs_files=("${HDOS_SRC}"/*.abs)
@@ -115,6 +192,12 @@ shopt -u nullglob
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/h89-disks-XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${WORK}/out" "${OUT}"
+
+# What the CP/M disks hold: the test programs and FNON
+CPM_FILES="${WORK}/cpm-files"
+mkdir -p "${CPM_FILES}"
+cp "${com_files[@]}" "${FNON}/FNON.COM" "${CPM_FILES}/"
+cpm_text "${FNON}/FNON.ASM" "${CPM_FILES}/FNON.ASM"
 
 # Largest first, so first fit packs the disks well
 by_size() {
@@ -176,18 +259,20 @@ while read -r size com; do
         cpm_lists+=(" $(basename "${com}")")
         cpm_used+=("${blocks}")
     fi
-done < <(by_size "${com_files[@]}")
+done < <(by_size "${CPM_FILES}"/*)
 for i in "${!cpm_lists[@]}"; do
     n=$(( i + 1 ))
     dir="${WORK}/cpm${n}"
     mkdir -p "${dir}"
-    args=()
+    # -b names its file .COM, so a program starts the disk and the rest are -a
+    bin=""
+    adds=()
     for f in ${cpm_lists[$i]}; do
-        cp "${CPM_SRC}/${f}" "${dir}/"
-        if [[ ${#args[@]} -eq 0 ]]; then args+=(-b "${f}"); else args+=(-a "${f}"); fi
+        cp "${CPM_FILES}/${f}" "${dir}/"
+        if [[ -z "${bin}" && "${f}" == *.COM ]]; then bin="${f}"; else adds+=(-a "${f}"); fi
     done
     (cd "${dir}" && "${APPMAKE}" +cpmdisk -f hz89 --container raw --no-com-file \
-        "${args[@]}" -o disk) > /dev/null
+        -b "${bin}" "${adds[@]}" -o disk) > /dev/null
     # appmake (cpm_write_file) gives a file of exactly 16 blocks a second,
     # empty directory entry, all zeros, which DIR lists as a nameless file.
     # Mark those erased the way ERA does, E5 in the first byte only: Heath's
@@ -254,6 +339,9 @@ CP/M 2.2.04
   cpm-2.2.04-64k.h8d     boot: B and RETURN at the H: prompt
 $(listing cpm cpm_lists)
   then:                  B:FUJIDEV
+  FNON.COM               starts the FujiNet card on a real H89, which holds
+                         it in reset from power-on (the programs start it
+                         too); FNON.ASM is its source, for ASM and LOAD
 
 Writes are saved to the disk files, so keep these copies and use copies of
 them if you want to start again later.
@@ -275,12 +363,14 @@ Where they come from
                       configured as a standard system and rebuilt for 64K
                       with MOVCPM17 64 * and SYSGEN. No licence is stated
                       for it.
+  FNON                this project's tools/disks/fnon/, assembled with
+                      that CP/M's ASM and LOAD. GPL-3.0-or-later.
 
 Made by tools/disks/make-fujinet-disks.sh in
 https://github.com/tschak909/fujinet-go-h89-desktop
 EOF
 
-python3 -I "${ROOT}/tools/disks/check-fujinet-disks.py" "${WORK}/out" "${HDOS_SRC}" "${CPM_SRC}"
+python3 -I "${ROOT}/tools/disks/check-fujinet-disks.py" "${WORK}/out" "${HDOS_SRC}" "${CPM_FILES}"
 
 for f in "${WORK}/out"/*; do
     dest="${OUT}/$(basename "$f")"

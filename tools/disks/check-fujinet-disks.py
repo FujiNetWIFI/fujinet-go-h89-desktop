@@ -3,13 +3,14 @@
 # Check the disks tools/disks/make-fujinet-disks.sh made: read each data
 # disk's directory the way its operating system does and make sure that,
 # between them, the HDOS disks hold exactly fujinet-lib's .abs programs and
-# the CP/M disks exactly its .COM programs, once each.
+# the CP/M disks exactly the files make-fujinet-disks.sh staged for them
+# (its .COM programs and FNON), once each.
 #
 # CP/M directories also get the checks that matter on Heath's CP/M 2.2.04:
 # no zeroed entry (DIR shows it as a nameless file) and no never-used entry
 # (all E5) before the last file, where its directory search stops.
 #
-#   check-fujinet-disks.py DISKS_DIR HDOS_PROGRAMS_DIR CPM_PROGRAMS_DIR
+#   check-fujinet-disks.py DISKS_DIR HDOS_PROGRAMS_DIR CPM_FILES_DIR
 #
 # Copyright (C) 2026 Thomas Cherryhomes
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -99,13 +100,13 @@ def check(kind, disks, programs, reader, errors):
 
 def main():
     if len(sys.argv) != 4:
-        sys.exit(f"usage: {sys.argv[0]} DISKS_DIR HDOS_PROGRAMS_DIR CPM_PROGRAMS_DIR")
+        sys.exit(f"usage: {sys.argv[0]} DISKS_DIR HDOS_PROGRAMS_DIR CPM_FILES_DIR")
     out, hdos_src, cpm_src = (pathlib.Path(a) for a in sys.argv[1:])
     errors = []
     check("HDOS", sorted(out.glob("fujinet-hdos-*.h8d")),
           sorted(hdos_src.glob("*.abs")), hdos_names, errors)
     check("CP/M", sorted(out.glob("fujinet-cpm-*.h8d")),
-          sorted(cpm_src.glob("*.COM")), cpm_names, errors)
+          sorted(p for p in cpm_src.iterdir() if p.is_file()), cpm_names, errors)
     for e in errors:
         print(f"error: {e}", file=sys.stderr)
     sys.exit(1 if errors else 0)
