@@ -53,21 +53,31 @@ recognised by CRC-32. See `COMPLIANCE.md`.
 
 ### Disks for trying FujiNet
 
-`tools/disks/make-fujinet-disks.sh` makes a set of 100K H17 disks, which
-the default H-17-1 drives take. They hold fujinet-lib's H89 test programs,
-built with `make -C testing h89-hdos h89-cpm` there, and need z88dk's
-appmake:
+Every release has a `fujinet-go-h89-<version>-disks.zip` with 100K H17
+disks, the size the default H-17-1 drives take. Put a boot disk in drive 1
+and a data disk in drive 2 or 3:
 
-- `fujinet-hdos-1..3.h8d` for HDOS: `MOUNT SY1:`, then `RUN SY1:FUJIDEV.ABS`.
-- `fujinet-cpm-1..3.h8d` for CP/M: `B:FUJIDEV`.
-- `hdos-2.0.h17disk` and `cpm-2.2.04-64k.h8d` to boot. The CP/M disk is
-  rebuilt with MOVCPM17 and SYSGEN because the distribution's 32K system is
-  too small for the programs. This step also needs a build and the ROMs.
-- `CONTENTS.txt` lists which program is on which disk.
+- `hdos-2.0.h17disk` with `fujinet-hdos-1..3.h8d`: `MOUNT SY1:`, then
+  `RUN SY1:FUJIDEV.ABS`.
+- `cpm-2.2.04-64k.h8d` with `fujinet-cpm-1..3.h8d`: `B:FUJIDEV`. This CP/M
+  is SEBHC's 2.2.04, rebuilt with MOVCPM17 and SYSGEN, because the
+  distribution's 32K system is too small for the programs.
 
-The boot disks come from `tools/disks/fetch-disks.sh`. The set goes in
-`tools/disks/images/fujinet/` unless `--out` names a folder, such as the
-one **Drives ▸ Open Disks Folder** shows.
+The data disks hold fujinet-lib's H89 integration tests. The zip's
+`README.txt` lists which program is on which disk and where everything
+comes from; see also [COMPLIANCE.md](COMPLIANCE.md).
+
+`tools/disks/make-fujinet-disks.sh` builds the set from a fujinet-lib
+checkout whose test programs are built with `make h89-cpm/r2r
+h89-hdos/r2r && make -C testing h89-cpm/r2r h89-hdos/r2r`. Use the `/r2r`
+targets: the plain ones leave programs that never reach the FujiNet. The
+script needs z88dk's appmake and python3.
+`tools/disks/check-fujinet-disks.py` reads back every directory before
+the disks are written. The set goes in `tools/disks/images/fujinet/`
+unless `--out` names a folder, such as the one **Drives ▸ Open Disks
+Folder** shows. The boot disks are the ones in `tools/disks/boot/`.
+`--rebuild-cpm-boot` remakes the CP/M one from SEBHC's disk
+(`tools/disks/fetch-disks.sh`), which needs a build and the ROMs.
 
 ## Keys
 
@@ -196,6 +206,7 @@ result published, as a **draft** release:
 | `fujinet-go-h89-<version>-windows-setup.exe` | NSIS installer, per-user, no admin rights |
 | `fujinet-go-h89-<version>-macos-{arm64,x86_64}.zip` | the `.app` bundle for Apple Silicon and Intel, FujiNet inside |
 | `online.fujinet.go.h89.{gnome,kde}.flatpak` | single-file bundles: `flatpak install ./…flatpak` |
+| `fujinet-go-h89-<version>-disks.zip` | boot disks and FujiNet test disks; see [Disks for trying FujiNet](#disks-for-trying-fujinet) |
 
 The version comes from the tree, not the tag: `project(… VERSION …)` sets
 it, and both metainfo files template it. `check-version` stops the release

@@ -184,12 +184,12 @@ M8  packaging                                                         [x]
       prompt; a blank .h8d chosen through the portal (/run/user/.../doc/)
       was INITed by HDOS and the label is in the file on the host; metainfo
       validates
-M9  CI/CD                                                             [~]
+M9  CI/CD                                                             [x]
   [x] flatpak.yml (both manifests), release.yml (DEB/RPM/TGZ per frontend
       with an install check, both .flatpak bundles, Windows zip + NSIS with
       the import whitelist, macOS arm64/x86_64 zips with otool and licence
       checks; a draft release on a v* tag, a dry run by hand)
-  [ ] verify: every workflow green; the release dry run produces every
+  [x] verify: every workflow green; the release dry run produces every
       artifact
 M10 polish, family audit                                              [~]
   [x] the single-step interrupt (GPP bit 0), as MAME has it: EI, one more
@@ -217,7 +217,14 @@ M10 polish, family audit                                              [~]
       up), takes the ROM zips on the command line and reaches MTR-90's H:
   [x] the first-run ROM prompt asks again only for what is still missing
       (a ROM file on the command line could have been imported meanwhile)
-  [ ] memory note; the v0.1.0 tag (waits for the go-ahead)
+  [x] memory note; v0.1.0 tagged and published 2026-10-11
+  [x] the release's disks zip (make-fujinet-disks.sh, the release's disks
+      job): fujinet-lib's H89 test programs at a pinned commit on 100K H17
+      disks, three for HDOS and three for CP/M, with HDOS 2.0 and a 64K CP/M
+      2.2.04 committed in tools/disks/boot/ (CI has no ROMs to SYSGEN it)
+  verify: check-fujinet-disks.py reads every directory back; in the session
+      runner every disk catalogs and DEVLIST, CLOCK, APPKEY and FUJIDEV
+      pass from them; the CI recipe run locally gives the same
 
 Notes / gotchas
 ---------------
@@ -229,6 +236,12 @@ Notes / gotchas
 - A 204800-byte H8D is DS40 unless hinted SS80: nothing in the file says.
 - HDOS clears type-ahead when it prompts: a script must wait for the prompt
   at the cursor (h89_headless --prompt), not just for the text on screen.
+- fujinet-lib: build the H89 programs with the /r2r targets (make
+  h89-cpm/r2r, make -C testing h89-cpm/r2r). The plain targets give
+  programs that fail their first FujiNet call ("FujiNet online").
+- appmake's cpmdisk zeroes a second directory entry for a file of exactly
+  16 blocks, and Heath's CP/M 2.2.04 stops its directory search at an
+  all-E5 entry: mark such entries erased (E5 in byte 0 only).
 - firmware master's build wants pyyaml>=6.0.3 and Jinja2>=3.1.6 and only
   offers to install them interactively; the recipe installs what the venv
   lacks (distros can be older), and the flatpaks bundle them.

@@ -22,10 +22,12 @@ tools/roms/*
 !tools/roms/README.md
 
 # Boot and data disks fetched or built for local end-to-end runs
-# (tools/disks/fetch-disks.sh). Operating system disks are copyrighted and
-# never committed.
+# (tools/disks/fetch-disks.sh, make-fujinet-disks.sh). The only disks
+# committed are the two boot disks the release's disks zip carries
+# (tools/disks/boot/, COMPLIANCE.md).
 tools/disks/images/
 *.h8d
+!tools/disks/boot/*.h8d
 *.h17
 *.h17raw
 *.rawdisk

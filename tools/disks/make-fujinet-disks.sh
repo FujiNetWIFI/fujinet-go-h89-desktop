@@ -1,27 +1,36 @@
 #!/usr/bin/env bash
 #
-# Build disks for trying FujiNet on the H89: fujinet-lib's H89 test programs
+# Build the disks for trying FujiNet on the H89, which every release ships
+# as fujinet-go-h89-<version>-disks.zip: fujinet-lib's H89 test programs
 # (testing/r2r/h89-hdos/*.abs and testing/r2r/h89-cpm/*.COM, made by
-# fujinet-lib's `make -C testing h89-hdos h89-cpm`) packed onto 100K H17
-# disks, which the default machine's H-17-1 drives take, and the boot disks
-# to run them from:
+# fujinet-lib's `make h89-cpm/r2r h89-hdos/r2r` and then
+# `make -C testing h89-cpm/r2r h89-hdos/r2r`; the /r2r targets matter, as
+# the plain ones leave programs that never reach the FujiNet)
+# packed onto 100K H17 disks, which the default machine's H-17-1 drives
+# take, and the boot disks to run them from:
 #
 #   fujinet-hdos-N.h8d     HDOS data disks: MOUNT SY1: then RUN SY1:FUJIDEV
 #   fujinet-cpm-N.h8d      CP/M data disks: B:FUJIDEV
-#   hdos-2.0.h17disk       a copy of the HDOS 2.0 system disk
+#   hdos-2.0.h17disk       HDOS 2.0
 #   cpm-2.2.04-64k.h8d     CP/M 2.2.04 rebuilt as a 64K system; the
 #                          distribution disk is a 32K one, too small for the
 #                          bigger programs ("BAD LOAD")
-#   CONTENTS.txt           which program is on which disk
+#   README.txt             how to boot them, which program is on which
+#                          disk, and where everything comes from
+#   LICENSE.fujinet-lib    the test programs' licence
 #
-# Needs z88dk's appmake (on PATH, or $APPMAKE) and python3. The boot disks
-# come from tools/disks/fetch-disks.sh. The 64K CP/M disk is
-# made the way a user would (CONFIGUR, MOVCPM17 64 *, SYSGEN), so it also
-# needs a build (build/core/h89_session_run) and the Heath ROMs; without them
-# it is skipped. Files already in --out are kept unless --force.
+# The boot disks are the repository's (tools/disks/boot/, COMPLIANCE.md).
+# --rebuild-cpm-boot remakes the 64K CP/M one from SEBHC's distribution
+# disk (tools/disks/fetch-disks.sh) the way a user would -- CONFIGUR, then
+# MOVCPM17 64 * and SYSGEN -- which needs a build
+# (build/core/h89_session_run) and the Heath ROMs, so CI cannot.
 #
-#   tools/disks/make-fujinet-disks.sh [--out DIR] [--lib DIR] [--roms DIR]
-#                                     [--build DIR] [--force]
+# Needs z88dk's appmake (on PATH, or $APPMAKE) and python3. The disks are
+# checked with tools/disks/check-fujinet-disks.py before they are written.
+# Files already in --out are kept unless --force.
+#
+#   tools/disks/make-fujinet-disks.sh [--out DIR] [--lib DIR] [--force]
+#   tools/disks/make-fujinet-disks.sh --rebuild-cpm-boot [--roms DIR] [--build DIR]
 #
 # --out defaults to tools/disks/images/fujinet (gitignored); the app's own
 # disks folder (Drives > Open Disks Folder) is a handy alternative.
@@ -33,10 +42,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="${ROOT}/tools/disks/images/fujinet"
-LIB="${HOME}/Workspace/fujinet-lib"
+LIB="${HOME:-}/Workspace/fujinet-lib"
 ROMS="${ROOT}/tools/roms"
 BUILD="${ROOT}/build"
 FORCE=0
+REBUILD_CPM=0
+usage() {
+    echo "usage: $0 [--out DIR] [--lib DIR] [--force]" >&2
+    echo "       $0 --rebuild-cpm-boot [--roms DIR] [--build DIR]" >&2
+    exit 2
+}
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --out) OUT="$2"; shift 2 ;;
@@ -44,39 +59,62 @@ while [[ $# -gt 0 ]]; do
         --roms) ROMS="$2"; shift 2 ;;
         --build) BUILD="$2"; shift 2 ;;
         --force) FORCE=1; shift ;;
-        *) echo "usage: $0 [--out DIR] [--lib DIR] [--roms DIR] [--build DIR] [--force]" >&2
-           exit 2 ;;
+        --rebuild-cpm-boot) REBUILD_CPM=1; shift ;;
+        *) usage ;;
     esac
 done
 
+BOOT="${ROOT}/tools/disks/boot"
+HDOS_BOOT="${BOOT}/hdos-2.0.h17disk"
+CPM_BOOT="${BOOT}/cpm-2.2.04-64k.h8d"
+
+# The 64K CP/M disk, from disk 1 of SEBHC's CP/M 2.2.04 update
+if [[ ${REBUILD_CPM} -eq 1 ]]; then
+    CPM_DIST="${ROOT}/tools/disks/images/CPM_2_2_update_1.h8d"
+    RUN="${BUILD}/core/h89_session_run"
+    for f in "${CPM_DIST}" "${RUN}"; do
+        [[ -e "$f" ]] || { echo "missing: $f (fetch-disks.sh, a build)" >&2; exit 1; }
+    done
+    WORK="$(mktemp -d "${TMPDIR:-/tmp}/h89-cpmboot-XXXXXX")"
+    trap 'rm -rf "${WORK}"' EXIT
+    cp "${CPM_DIST}" "${WORK}/cpm.h8d"
+    "${RUN}" --roms "${ROMS}" --home "${WORK}/home" --timeout 120 \
+        --disk "h17:1=${WORK}/cpm.h8d" \
+        --until 'H:' --type 'B\r' \
+        --prompt 'STANDARD SYSTEM (Y OR N)? <Y>:' --type '\r' \
+        --prompt 'A>' --type 'MOVCPM17 64 *\r' --wait 15000 \
+        --prompt 'A>' --type 'SYSGEN\r' \
+        --prompt 'SOURCE DRIVE NAME (OR RETURN TO SKIP):' --type '\r' \
+        --prompt 'DESTINATION DRIVE NAME (OR RETURN TO REBOOT):' --type 'A' \
+        --prompt 'DESTINATION ON A, THEN TYPE RETURN' --type '\r' \
+        --until 'FUNCTION COMPLETE' > "${WORK}/sysgen.log" 2>&1 \
+        || { tail -5 "${WORK}/sysgen.log" >&2; echo "SYSGEN failed (ROMs in ${ROMS}?)" >&2; exit 1; }
+    if cmp -s "${WORK}/cpm.h8d" "${CPM_BOOT}"; then
+        echo "${CPM_BOOT}: unchanged"
+    else
+        cp "${WORK}/cpm.h8d" "${CPM_BOOT}"
+        echo "wrote ${CPM_BOOT}"
+    fi
+    exit 0
+fi
+
 HDOS_SRC="${LIB}/testing/r2r/h89-hdos"
 CPM_SRC="${LIB}/testing/r2r/h89-cpm"
-IMAGES="${ROOT}/tools/disks/images"
-HDOS_OS="${IMAGES}/HDOS_2_0_Operating_System.h17disk"
-CPM_OS="${IMAGES}/CPM_2_2_update_1.h8d"
-RUN="${BUILD}/core/h89_session_run"
-
-APPMAKE="${APPMAKE:-$(command -v z88dk-appmake || echo "${HOME}/Workspace/z88dk/bin/z88dk-appmake")}"
+APPMAKE="${APPMAKE:-$(command -v z88dk-appmake || echo "${HOME:-}/Workspace/z88dk/bin/z88dk-appmake")}"
 [[ -x "${APPMAKE}" ]] || { echo "missing: z88dk-appmake (set APPMAKE)" >&2; exit 1; }
 shopt -s nullglob
 abs_files=("${HDOS_SRC}"/*.abs)
 com_files=("${CPM_SRC}"/*.COM)
 shopt -u nullglob
-[[ ${#abs_files[@]} -gt 0 || ${#com_files[@]} -gt 0 ]] || {
+[[ ${#abs_files[@]} -gt 0 && ${#com_files[@]} -gt 0 ]] || {
     echo "no test programs in ${LIB}/testing/r2r/h89-{hdos,cpm}" >&2
-    echo "(make them with: make -C ${LIB}/testing h89-hdos h89-cpm)" >&2
+    echo "(make them in fujinet-lib: make h89-cpm/r2r h89-hdos/r2r && make -C testing h89-cpm/r2r h89-hdos/r2r)" >&2
     exit 1
 }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/h89-disks-XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${WORK}/out" "${OUT}"
-CONTENTS="${WORK}/out/CONTENTS.txt"
-{
-    echo "FujiNet test disks for FujiNet Go H89, made $(date +%F) by"
-    echo "tools/disks/make-fujinet-disks.sh from fujinet-lib $(git -C "${LIB}" log -1 --format='%h (%s)' 2>/dev/null || echo '(unknown)')."
-    echo
-} > "${CONTENTS}"
 
 # Largest first, so first fit packs the disks well
 by_size() {
@@ -174,44 +212,75 @@ EOF
     mv "${dir}/disk" "${WORK}/out/fujinet-cpm-${n}.h8d"
 done
 
-{
-    for i in "${!hdos_disks[@]}"; do
-        echo "fujinet-hdos-$(( i + 1 )).h8d:${hdos_lists[$i]}"
-    done
-    for i in "${!cpm_lists[@]}"; do
-        echo "fujinet-cpm-$(( i + 1 )).h8d:${cpm_lists[$i]}"
-    done
-    echo
-} >> "${CONTENTS}"
 
-# Boot disks
-if [[ -f "${HDOS_OS}" ]]; then
-    cp "${HDOS_OS}" "${WORK}/out/hdos-2.0.h17disk"
-    echo "hdos-2.0.h17disk: HDOS 2.0 (B at H:, SPACE twice, RETURN, a date with an 80s year)" >> "${CONTENTS}"
-else
-    echo "skipping hdos-2.0.h17disk: run tools/disks/fetch-disks.sh" >&2
+cp "${HDOS_BOOT}" "${CPM_BOOT}" "${WORK}/out/"
+[[ -f "${LIB}/LICENSE" ]] && cp "${LIB}/LICENSE" "${WORK}/out/LICENSE.fujinet-lib"
+
+lib_url="$(git -C "${LIB}" remote get-url origin 2>/dev/null \
+    | sed -E 's#^git@github.com:#https://github.com/#; s#\.git$##' || true)"
+lib_url="${lib_url:-https://github.com/FujiNetWIFI/fujinet-lib}"
+lib_commit="$(git -C "${LIB}" rev-parse HEAD 2>/dev/null || echo unknown)"
+if [[ -n "$(git -C "${LIB}" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    lib_commit="${lib_commit}, with local changes"
 fi
-if [[ -f "${CPM_OS}" && -x "${RUN}" ]]; then
-    cp "${CPM_OS}" "${WORK}/cpm.h8d"
-    if "${RUN}" --roms "${ROMS}" --home "${WORK}/home" --timeout 120 \
-        --disk "h17:1=${WORK}/cpm.h8d" \
-        --until 'H:' --type 'B\r' \
-        --prompt 'STANDARD SYSTEM (Y OR N)? <Y>:' --type '\r' \
-        --prompt 'A>' --type 'MOVCPM17 64 *\r' --wait 15000 \
-        --prompt 'A>' --type 'SYSGEN\r' \
-        --prompt 'SOURCE DRIVE NAME (OR RETURN TO SKIP):' --type '\r' \
-        --prompt 'DESTINATION DRIVE NAME (OR RETURN TO REBOOT):' --type 'A' \
-        --prompt 'DESTINATION ON A, THEN TYPE RETURN' --type '\r' \
-        --until 'FUNCTION COMPLETE' > "${WORK}/sysgen.log" 2>&1; then
-        mv "${WORK}/cpm.h8d" "${WORK}/out/cpm-2.2.04-64k.h8d"
-        echo "cpm-2.2.04-64k.h8d: CP/M 2.2.04, 64K (B at H:)" >> "${CONTENTS}"
-    else
-        echo "skipping cpm-2.2.04-64k.h8d: SYSGEN failed (ROMs in ${ROMS}?); log:" >&2
-        tail -5 "${WORK}/sysgen.log" >&2
-    fi
-else
-    echo "skipping cpm-2.2.04-64k.h8d: needs ${CPM_OS} (fetch-disks.sh) and ${RUN}" >&2
-fi
+listing() {
+    local kind=$1; shift
+    local i
+    local -n lists=$1
+    for i in "${!lists[@]}"; do
+        printf '  %-22s %s\n' "fujinet-${kind}-$(( i + 1 )).h8d" "${lists[$i]# }"
+    done
+}
+cat > "${WORK}/out/README.txt" <<EOF
+Disks for trying FujiNet on FujiNet Go H89
+==========================================
+
+All of them are 100K H17 disks (one side, 40 tracks), which the default
+machine's three H-17-1 drives take. Put a boot disk in drive 1 and a data
+disk in drive 2 or 3 (the Drives menu, or drag one onto the window). The
+programs are fujinet-lib's integration tests: each talks to the FujiNet
+built into the app, prints PASS or FAIL for every check, and ends with a
+count.
+
+HDOS 2.0
+  hdos-2.0.h17disk       boot: B and RETURN at the H: prompt, SPACE twice,
+                         RETURN at ACTION? <BOOT>, then a date with an 80s
+                         year, such as 11-OCT-80
+$(listing hdos hdos_lists)
+  then:                  MOUNT SY1:
+                         RUN SY1:FUJIDEV.ABS
+
+CP/M 2.2.04
+  cpm-2.2.04-64k.h8d     boot: B and RETURN at the H: prompt
+$(listing cpm cpm_lists)
+  then:                  B:FUJIDEV
+
+Writes are saved to the disk files, so keep these copies and use copies of
+them if you want to start again later.
+
+Where they come from
+  The test programs   fujinet-lib, ${lib_url}
+                      commit ${lib_commit}
+                      (the source is that commit's testing/ folder), built
+                      with z88dk. GPL-3.0 (LICENSE.fujinet-lib).
+  HDOS 2.0            Heath's operating system, from Mark Garlanger's
+                      capture of the distribution disk:
+                      https://heathkit.garlanger.com/software/OSes/HDOS/2.0/
+                      ("This software was placed in the public domain.")
+  CP/M 2.2.04         Heath/Zenith's CP/M 2.2 for the H17 (Digital Research's
+                      CP/M with Heath's BIOS and utilities), disk 1 of
+                      CPM_2_2_04_Update.zip from the Society of Eight-Bit
+                      Heath Computerists' archive,
+                      https://sebhc.github.io/sebhc/software.html,
+                      configured as a standard system and rebuilt for 64K
+                      with MOVCPM17 64 * and SYSGEN. No licence is stated
+                      for it.
+
+Made by tools/disks/make-fujinet-disks.sh in
+https://github.com/tschak909/fujinet-go-h89-desktop
+EOF
+
+python3 -I "${ROOT}/tools/disks/check-fujinet-disks.py" "${WORK}/out" "${HDOS_SRC}" "${CPM_SRC}"
 
 for f in "${WORK}/out"/*; do
     dest="${OUT}/$(basename "$f")"

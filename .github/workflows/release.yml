@@ -3,8 +3,9 @@ name: Release
 # Cutting a release. Triggered by a `v*` tag, builds every artifact this
 # repository publishes -- Linux packages for both frontends (.deb/.rpm/.tar.gz
 # via CPack), both flatpak single-file bundles, zipped macOS app bundles for
-# Apple Silicon (arm64) and Intel (x86_64), and a Windows (x86-64) portable
-# zip plus NSIS installer -- and attaches them to a draft GitHub Release.
+# Apple Silicon (arm64) and Intel (x86_64), a Windows (x86-64) portable
+# zip plus NSIS installer, and a zip of disks for trying FujiNet -- and
+# attaches them to a draft GitHub Release.
 #
 # Run by hand (workflow_dispatch) it is a dry run: every artifact is built,
 # tested and uploaded to the run, the version is the tree's own, and no
@@ -23,11 +24,13 @@ name: Release
 # downloaded build's About box can never disagree with the download it came
 # from. The check-version job below enforces that.
 #
-# Nothing copyrighted is embedded in any artifact: every configure below
-# passes -DWITH_H89_ROMS=OFF (the Heath ROMs are imported at run time from
-# the user's own MAME sets), and the no_embedded_roms ctests run against each
-# frontend binary (see COMPLIANCE.md). Every artifact carries the GPL and the
-# notices of the vendored code (LICENSE.VirtualH89, LICENSE.z80pack).
+# No Heath ROM is embedded in any artifact: every configure below passes
+# -DWITH_H89_ROMS=OFF (the ROMs are imported at run time from the user's own
+# MAME sets), and the no_embedded_roms ctests run against each frontend
+# binary (see COMPLIANCE.md). Every application artifact carries the GPL and
+# the notices of the vendored code (LICENSE.VirtualH89, LICENSE.z80pack). The
+# disks zip carries two operating systems, HDOS 2.0 and Heath's CP/M 2.2.04;
+# COMPLIANCE.md says where they come from and why they ship.
 
 on:
   push:
@@ -526,9 +529,63 @@ jobs:
           path: FujiNet-Go-H89-macos-${{ matrix.arch }}.zip
           if-no-files-found: error
 
+  # The disks for trying FujiNet, as one zip (tools/disks/make-fujinet-disks.sh):
+  # fujinet-lib's H89 test programs, built here at a pinned commit with the
+  # z88dk in the container fujinet-lib's own CI uses (pinned by digest), packed
+  # onto H17 disks beside the two boot disks the repository carries
+  # (tools/disks/boot/; COMPLIANCE.md says what they are and why they ship).
+  # The packer reads every disk's directory back before it writes them.
+  disks:
+    needs: check-version
+    runs-on: ubuntu-latest
+    env:
+      FUJINET_LIB_COMMIT: 7983c27c008cce064315dcadee8a319b5faa5152
+      # fozztexx/defoogi:1.4.8
+      DEFOOGI: fozztexx/defoogi@sha256:060064f2e862115193d82a7b63186d64fe1ca65ef4a3a6037752ff3541fbf6c0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch fujinet-lib (pinned)
+        run: |
+          git init -q fujinet-lib
+          git -C fujinet-lib remote add origin https://github.com/FujiNetWIFI/fujinet-lib.git
+          git -C fujinet-lib fetch -q --depth 1 origin "$FUJINET_LIB_COMMIT"
+          git -C fujinet-lib checkout -q FETCH_HEAD
+
+      - name: Build its H89 test programs
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" --entrypoint bash \
+            -v "$PWD:$PWD" -w "$PWD/fujinet-lib" "$DEFOOGI" \
+            -c 'make h89-cpm/r2r h89-hdos/r2r && make -C testing h89-cpm/r2r h89-hdos/r2r'
+
+      # The container has no python3, which the packer needs, so the packer
+      # runs here and calls appmake in the container, in its own folder.
+      - name: Pack and check the disks
+        run: |
+          cat > "$RUNNER_TEMP/appmake" <<EOF
+          #!/bin/sh
+          exec docker run --rm --user "$(id -u):$(id -g)" --entrypoint z88dk-appmake \
+            -v "\$PWD:\$PWD" -w "\$PWD" "$DEFOOGI" "\$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/appmake"
+          APPMAKE="$RUNNER_TEMP/appmake" tools/disks/make-fujinet-disks.sh \
+            --lib fujinet-lib --out dist/FujiNet-Go-H89-Disks
+
+      - name: Zip
+        run: |
+          zip="fujinet-go-h89-${{ needs.check-version.outputs.version }}-disks.zip"
+          (cd dist && zip -qr "../$zip" FujiNet-Go-H89-Disks)
+          unzip -l "$zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: disks
+          path: fujinet-go-h89-*-disks.zip
+          if-no-files-found: error
+
   # Only for a tag: a dispatched dry run stops at the artifacts above.
   release:
-    needs: [check-version, linux-packages, flatpaks, windows-package, macos-package]
+    needs: [check-version, linux-packages, flatpaks, windows-package, macos-package, disks]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -555,6 +612,7 @@ jobs:
             arch="${zip##*-macos-}"; arch="${arch%.zip}"
             cp "$zip" "release/fujinet-go-h89-${tag}-macos-${arch}.zip"
           done
+          cp "artifacts/disks/fujinet-go-h89-${tag}-disks.zip" release/
           ls -l release
 
       - name: Create (or update) the draft release and upload assets
