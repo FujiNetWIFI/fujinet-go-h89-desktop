@@ -51,6 +51,24 @@ recognised by CRC-32. See `COMPLIANCE.md`.
 | MMS 77316, port 070Q | 8 (4 × 8", 4 × 5.25") | as the H37 |
 | MMS 77320 SASI | 8 XEBEC units | fixed disks the controller creates |
 
+### Disks for trying FujiNet
+
+`tools/disks/make-fujinet-disks.sh` makes a set of 100K H17 disks, which
+the default H-17-1 drives take. They hold fujinet-lib's H89 test programs,
+built with `make -C testing h89-hdos h89-cpm` there, and need z88dk's
+appmake:
+
+- `fujinet-hdos-1..3.h8d` for HDOS: `MOUNT SY1:`, then `RUN SY1:FUJIDEV.ABS`.
+- `fujinet-cpm-1..3.h8d` for CP/M: `B:FUJIDEV`.
+- `hdos-2.0.h17disk` and `cpm-2.2.04-64k.h8d` to boot. The CP/M disk is
+  rebuilt with MOVCPM17 and SYSGEN because the distribution's 32K system is
+  too small for the programs. This step also needs a build and the ROMs.
+- `CONTENTS.txt` lists which program is on which disk.
+
+The boot disks come from `tools/disks/fetch-disks.sh`. The set goes in
+`tools/disks/images/fujinet/` unless `--out` names a folder, such as the
+one **Drives ▸ Open Disks Folder** shows.
+
 ## Keys
 
 The H19's keyboard is typed on the PC's; what a PC keyboard lacks is on the
