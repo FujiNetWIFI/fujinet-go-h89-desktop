@@ -13,8 +13,19 @@
  *             PC0  74LVC245 DIR (1 = H89 -> ESP32)
  *             PC1  74LVC245 /OE, and the ESP32's IO0 boot strap
  *             PC2  ESP32 EN (0 holds it in reset)
- *   0xD3  control: bit 7 set = mode word (clears port C, the INTEs, /OBF
- *         and IBF); bit 7 clear = port C bit set/reset, (bit << 1) | value
+ *   0xD1  port B: wired to nothing. While a mode word makes it an output it
+ *         reads back what was written, which fujinet-lib uses to mark the
+ *         chip as set up; as an input it reads FF.
+ *   0xD3  control: bit 7 set = mode word (clears port B, port C, the INTEs,
+ *         /OBF and IBF); bit 7 clear = port C bit set/reset, (bit << 1) | value
+ *
+ * Outside mode 2 port C reads its pins, not the status word, and port A has
+ * no handshake. After /RESET every port is an input that the 82C55's bus
+ * hold pulls up. PC2 then reads 1 against EN's divider while the ESP32 stays
+ * held in reset. After a mode word that leaves PC0-PC3 inputs (Heath CP/M's
+ * BIOS sends 83H to 323Q), PC2 reads 0. That matches a real H89: HDOS
+ * CONFIG, which trusted PC2, hung after a reset and CP/M CONFIG did not.
+ * It is not a measurement.
  *
  * The ESP32 side is FujiNet itself, over a raw byte pipe (core/net/rawpipe)
  * to the in-process runtime's BoIP listener: the bytes are SLIP-framed
@@ -71,7 +82,7 @@ class FujiNetCard: public IODevice, public ClockUser
 
     struct State
     {
-        BYTE  mode, portC, status, outLatch, inLatch;
+        BYTE  mode, portB, portC, status, outLatch, inLatch;
         bool  obfLow, ibf, inte1, inte2, en, oeLow, dirToEsp, download;
         Link  link;
         unsigned long long bytesToEsp, bytesFromEsp, txDropped, ackWaits;
@@ -83,15 +94,24 @@ class FujiNetCard: public IODevice, public ClockUser
 
   private:
     BYTE status() const;
+    BYTE portCPins() const;
     void setPortC(BYTE pc);
     void poll();
     void fillInput();
+
+    bool mode2() const { return (mode_m & 0x40) != 0; }
+    bool portBIn() const { return (mode_m & 0x02) != 0; }
+    bool pcLowIn() const { return (mode_m & 0x01) != 0; }
+    bool pcHighIn() const { return (mode_m & 0x08) != 0; }
 
     rawpipe*  pipe_m;
     unsigned  ackDelay_m;
 
     BYTE      mode_m;
+    BYTE      portB_m;     // port B output latch
     BYTE      portC_m;     // PC0-PC2 output latch
+    BYTE      pcLatch_m;   // PC3-PC7 output latch, outside mode 2
+    bool      pc2Held_m;   // the bus hold keeps PC2 reading 1 (since /RESET)
     bool      inte1_m, inte2_m;
     bool      obfLow_m;    // a byte waits for the ESP32's /ACK
     unsigned  ackCountdown_m;

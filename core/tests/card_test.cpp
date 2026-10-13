@@ -114,16 +114,37 @@ main()
     MachineContext::Scope scope(&ctx);
     FujiNetCard           card("127.0.0.1", port, 40);
 
-    // after /RESET the ESP32 is held in reset: no link, nothing dialled
+    // after /RESET the ESP32 is held in reset: no link, nothing dialled.
+    // Every port is an input: port C reads its pins, and PC2 reads 1 (the
+    // bus hold) although EN is low; port B reads FF.
     CHECK(card.link() == FujiNetCard::LinkEspReset);
-    CHECK_EQ_INT(card.in(0xd2) & 0xa0, 0x80);   // /OBF high, IBF low
+    CHECK_EQ_INT(card.in(0xd2), 0x5c);
+    CHECK_EQ_INT(card.in(0xd1), 0xff);
 
-    // portio.c's port_init(): mode 2, then pulse EN with /OE (IO0) high
+    // nothing answers outside mode 2: a byte written is never taken
+    card.out(0xd0, 'R');
+    card.notification(1024);
+    CHECK_EQ_INT(card.in(0xd2) & 0x80, 0);
+    CHECK_EQ_INT(card.state().bytesToEsp, 0);
+
+    // Heath CP/M's BIOS sets up 320Q's 8250: 83H leaves PC0-PC3 inputs and
+    // PC2 reads 0 from then on; PC4-PC7 are outputs, cleared
+    card.out(0xd3, 0x83);
+    CHECK_EQ_INT(card.in(0xd2), 0x08);
+    card.out(0xd1, 0x5a);
+    CHECK_EQ_INT(card.in(0xd1), 0xff);
+    CHECK(card.link() == FujiNetCard::LinkEspReset);
+    card.reset();
+    CHECK_EQ_INT(card.in(0xd2), 0x5c);
+
+    // portio.c's port_init(): mode 2 with EN and /OE (IO0) back up at once,
+    // then the set-up mark in port B, which reads back
     card.out(0xd3, 0xc0);
     card.out(0xd2, 0x06);
-    card.out(0xd2, 0x02);
-    card.out(0xd2, 0x06);
     CHECK(card.link() == FujiNetCard::LinkWaiting || card.link() == FujiNetCard::LinkUp);
+    CHECK_EQ_INT(card.in(0xd1), 0x00);
+    card.out(0xd1, 0xa5);
+    CHECK_EQ_INT(card.in(0xd1), 0xa5);
 
     // it dials FujiNet
     bool accepted = spin(card, [&] {
@@ -213,13 +234,13 @@ main()
     }
     CHECK((card.in(0xd2) & 0x80) == 0);
 
-    // a mode word clears it all
+    // a mode word clears it all, the mark in port B too
     card.out(0xd3, 0xc0);
     CHECK_EQ_INT(card.in(0xd2), 0x80);
     CHECK(card.link() == FujiNetCard::LinkEspReset);
+    CHECK_EQ_INT(card.in(0xd1), 0x00);
 
-    // ports B and the control register read as floating
-    CHECK_EQ_INT(card.in(0xd1), 0xff);
+    // the control register reads as floating
     CHECK_EQ_INT(card.in(0xd3), 0xff);
 
     sock_close(g_listen);
