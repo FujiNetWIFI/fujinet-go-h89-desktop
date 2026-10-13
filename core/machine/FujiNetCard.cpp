@@ -46,11 +46,14 @@ FujiNetCard::~FujiNetCard()
 void
 FujiNetCard::reset()
 {
-    // /RESET on the 82C55: every port an input, latches clear -- so EN
-    // floats low through its pull-down and the ESP32 is held in reset
-    // until software sets the mode and raises it.
+    // /RESET on the 82C55: every port an input, latches clear. The ESP32
+    // is held in reset until software sets the mode and raises EN, but PC2
+    // reads 1 meanwhile: the bus hold pulls it up against EN's divider.
     mode_m         = 0x9b;
+    portB_m        = 0;
     portC_m        = 0;
+    pcLatch_m      = 0;
+    pc2Held_m      = true;
     inte1_m        = false;
     inte2_m        = false;
     obfLow_m       = false;
@@ -69,9 +72,27 @@ FujiNetCard::reset()
 BYTE
 FujiNetCard::status() const
 {
+    if (!mode2())
+    {
+        return portCPins();
+    }
     bool intra = (!obfLow_m && inte1_m) || (ibf_m && inte2_m);
     return (BYTE) ((obfLow_m ? 0 : 0x80) | (inte1_m ? 0x40 : 0) | (ibf_m ? 0x20 : 0) |
-                   (inte2_m ? 0x10 : 0) | (intra ? 0x08 : 0) | (portC_m & 0x07));
+                   (inte2_m ? 0x10 : 0) | (intra ? 0x08 : 0) |
+                   (pcLowIn() ? (portCPins() & 0x07) : (portC_m & 0x07)));
+}
+
+BYTE
+FujiNetCard::portCPins() const
+{
+    // An output reads its latch. An input reads its line: /OBF (PC7), IBF
+    // (PC5), /OE (PC1) and DIR (PC0) through their dividers to ground, so
+    // 0; /ACK (PC6) and /STB (PC4) from the ESP32, and INTR (PC3, not
+    // wired), held at 1; PC2 as the bus hold left it.
+    BYTE hi = pcHighIn() ? 0x50 : (BYTE) (pcLatch_m & 0xf0);
+    BYTE lo = pcLowIn() ? (BYTE) (0x08 | (pc2Held_m ? PC_EN : 0))
+                        : (BYTE) ((pcLatch_m & 0x08) | (portC_m & 0x07));
+    return (BYTE) (hi | lo);
 }
 
 void
@@ -112,11 +133,18 @@ FujiNetCard::in(BYTE addr)
     {
         case 0: // port A: the byte the ESP32 strobed in
         {
+            if (!mode2())
+            {
+                return 0xff; // no strobe outside mode 2
+            }
             BYTE val = inLatch_m;
             ibf_m    = false;
             fillInput();
             return val;
         }
+
+        case 1: // port B: wired to nothing, so the latch or the bus hold
+            return portBIn() ? 0xff : portB_m;
 
         case 2: // port C: the status word
             if (!ibf_m && sincePoll_m >= statusPollCycles_c)
@@ -125,7 +153,6 @@ FujiNetCard::in(BYTE addr)
             }
             return status();
 
-        case 1: // port B (unused on the card; inputs float high)
         case 3: // the control register cannot be read
         default:
             return 0xff;
@@ -138,46 +165,75 @@ FujiNetCard::out(BYTE addr, BYTE val)
     switch (addr - basePort_c)
     {
         case 0: // port A: a byte for the ESP32
+            if (!mode2())
+            {
+                break; // no /OBF outside mode 2, so the ESP32 never takes it
+            }
             outLatch_m     = val;
             obfLow_m       = true;
             ackCountdown_m = ackDelay_m;
             break;
 
-        case 2: // port C: only PC0-PC2 are outputs in this mode
-            setPortC(val);
+        case 1: // port B
+            if (!portBIn())
+            {
+                portB_m = val;
+            }
+            break;
+
+        case 2: // port C: PC0-PC2 when they are outputs; PC3-PC7 outside mode 2
+            if (!pcLowIn())
+            {
+                setPortC(val);
+            }
+            if (!mode2())
+            {
+                BYTE outs = (BYTE) ((pcHighIn() ? 0 : 0xf0) | (pcLowIn() ? 0 : 0x08));
+                pcLatch_m = (BYTE) ((pcLatch_m & ~outs) | (val & outs));
+            }
             break;
 
         case 3:
             if (val & 0x80)
             {
-                // a mode word clears every output latch and both INTEs
-                mode_m   = val;
-                inte1_m  = false;
-                inte2_m  = false;
-                obfLow_m = false;
-                ibf_m    = false;
+                // a mode word clears every output latch and both INTEs; the
+                // bus hold no longer wins on PC2 once EN's divider has it
+                mode_m    = val;
+                inte1_m   = false;
+                inte2_m   = false;
+                obfLow_m  = false;
+                ibf_m     = false;
+                portB_m   = 0;
+                pcLatch_m = 0;
+                pc2Held_m = false;
                 setPortC(0);
             }
             else
             {
                 unsigned bit = (val >> 1) & 0x07;
                 bool     set = (val & 0x01) != 0;
-                switch (bit)
+                if (bit <= 2)
                 {
-                    case 0:
-                    case 1:
-                    case 2:
+                    if (!pcLowIn())
+                    {
                         setPortC(set ? (BYTE) (portC_m | (1 << bit)) : (BYTE) (portC_m & ~(1 << bit)));
-                        break;
-                    case 4:
+                    }
+                }
+                else if (mode2())
+                {
+                    if (bit == 4)
+                    {
                         inte2_m = set;
-                        break;
-                    case 6:
+                    }
+                    else if (bit == 6)
+                    {
                         inte1_m = set;
-                        break;
-                    default:
-                        // the mode 2 handshake lines are not settable
-                        break;
+                    }
+                    // the other mode 2 handshake lines are not settable
+                }
+                else if (bit == 3 ? !pcLowIn() : !pcHighIn())
+                {
+                    pcLatch_m = set ? (BYTE) (pcLatch_m | (1 << bit)) : (BYTE) (pcLatch_m & ~(1 << bit));
                 }
             }
             break;
@@ -222,7 +278,7 @@ FujiNetCard::fillInput()
 {
     // The ESP32 strobes the next byte in once IBF is clear, while the 245
     // points from it to the H89.
-    if (ibf_m || !pipe_m || !(portC_m & PC_EN) || download_m)
+    if (ibf_m || !mode2() || !pipe_m || !(portC_m & PC_EN) || download_m)
     {
         return;
     }
@@ -290,6 +346,7 @@ FujiNetCard::state() const
 {
     State s;
     s.mode         = mode_m;
+    s.portB        = portBIn() ? 0xff : portB_m;
     s.portC        = portC_m;
     s.status       = status();
     s.outLatch     = outLatch_m;

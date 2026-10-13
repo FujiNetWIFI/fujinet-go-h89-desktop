@@ -64,6 +64,8 @@ Every changed file names its changes in its header. In short:
   its draft); every format is written back to its own file. VirtualH89 saved
   H17 disks to `./h17_saveDiskN.rawdisk` on exit.
 - **Debugger hooks** on every instruction, I/O and memory access, and IM 2.
+- **The Z80**: `EX (SP),IX/IY` and `LD SP,IX/IY` (they acted on HL, which
+  broke zsdcc's stack frames).
 - **Portability**: Windows builds (MinGW-w64) through `compat_posix.h`.
 - **Not vendored**: the GUIs (GLUT, wxWidgets, Dear ImGui), `main`, the stdio
   consoles and the operator protocol, the Z47 (not functional upstream),

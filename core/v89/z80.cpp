@@ -9,6 +9,8 @@
 /// Modified for FujiNet Go H89 (modifications GPL-3.0-or-later):
 ///   Speed-up: devices see 2.048 MHz time whatever the CPU runs at (the
 ///   wall clock scales); the default factor is 1, not 40.
+///   EX (SP),HL and LD SP,HL honour a DD/FD prefix (EX (SP),IX/IY,
+///   LD SP,IX/IY): they took HL whatever the prefix.
 ///
 
 #include "z80.h"
@@ -2771,7 +2773,7 @@ Z80::op_ld_xx_nn(void)
 void
 Z80::op_ld_sp_hl(void)
 {
-    SP     = HL;
+    SP     = getHLReg16Val();    // LD SP,IX / LD SP,IY with a prefix
 
     ticks -= 2;
 }
@@ -4401,10 +4403,12 @@ Z80::op_exx(void)
 void
 Z80::op_ex_isp_hl(void)
 {
-    WORD i = readWord(SP);
+    // EX (SP),IX / EX (SP),IY with a DD / FD prefix
+    WORD& r = getHLReg16();
+    WORD  i = readWord(SP);
 
-    writeWord(SP, HL);
-    HL     = i;
+    writeWord(SP, r);
+    r      = i;
 
     ticks -= 3;
 }

@@ -1213,8 +1213,9 @@ h89debug_section(h89debug* d, int section, char* dst, int dstsz)
                 break;
             }
             FujiNetCard::State s = card->state();
-            char               c1[16], c2[16], c3[16];
-            o("82C55 mode %s  port C %s  status %s  out %s  in %s\n", fmt8(rx, s.mode, a, sizeof a),
+            char               c1[16], c2[16], c3[16], c4[16];
+            o("82C55 mode %s  port B %s  port C %s  status %s  out %s  in %s\n",
+              fmt8(rx, s.mode, a, sizeof a), fmt8(rx, s.portB, c4, sizeof c4),
               fmt8(rx, s.portC, b, sizeof b), fmt8(rx, s.status, c1, sizeof c1),
               fmt8(rx, s.outLatch, c2, sizeof c2), fmt8(rx, s.inLatch, c3, sizeof c3));
             o("/OBF %s  IBF %d  INTE1 %d INTE2 %d  ESP32 EN %d  245 %s, /OE %s%s\n",

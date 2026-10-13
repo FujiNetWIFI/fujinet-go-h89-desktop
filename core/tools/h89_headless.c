@@ -11,7 +11,8 @@
  *   --type TEXT        type TEXT on the H19's keyboard (\r, \n, \e, \\ and
  *                      \xHH escapes; newlines are RETURN)
  *   --key NAME         press a special key: f1..f5, erase, blue, red, gray,
- *                      up, down, left, right, home, break, reset
+ *                      up, down, left, right, home, break, reset, esc,
+ *                      backspace, delete, return, tab
  *   --wait MS          let the machine run MS milliseconds
  *   --screen           print the screen
  *   --ppm FILE         write the H19's picture
@@ -19,6 +20,11 @@
  *   --debug CMD        (h89_session_run) stop the machine, run a debugger
  *                      prompt command -- fdc, h17, regs, card, dis pc ... --
  *                      print what it says, and let the machine run on
+ *   --stdin            take more steps from standard input, one a line, the
+ *                      same words without the dashes ("wait 500", "debug
+ *                      mem _x 2", "screen"); each is answered with a line
+ *                      "@@ok" or "@@fail" once done, so a script can drive
+ *                      the machine step by step (EOF ends the run)
  *
  * Machine options (before the steps): --roms DIR (default $H89_TEST_ROM_DIR,
  * then tools/roms), --monitor FILE, --boip HOST:PORT, --warp,
@@ -75,6 +81,10 @@ typedef struct {
 static rom_image s_found[64];
 static char home_dir[1024];
 static char start_dir[1024] = ".";
+static int s_timeout_s = 20;
+#ifdef H89_HEADLESS_SESSION
+static h89session *s_sess;
+#endif
 
 static void sleep_ms(int ms)
 {
@@ -260,6 +270,8 @@ static int key_by_name(const char *n)
         {"up", H89K_UP}, {"down", H89K_DOWN}, {"left", H89K_LEFT}, {"right", H89K_RIGHT},
         {"home", H89K_HOME}, {"break", H89K_BREAK}, {"reset", H89K_RESET},
         {"offline", H89K_OFFLINE}, {"linefeed", H89K_LINEFEED},
+        /* (ASCII keys --type can't send) */
+        {"esc", 27}, {"backspace", 8}, {"delete", 127}, {"return", 13}, {"tab", 9},
     };
     for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
         if (strcmp(n, keys[i].name) == 0)
@@ -285,6 +297,153 @@ static void usage(void)
             "                    [--until TEXT | --prompt TEXT | --type TEXT | --key NAME |\n"
             "                     --wait MS | --screen | --ppm FILE | --disk SPEC |\n"
             "                     --debug CMD (h89_session_run)]...\n");
+}
+
+/* Does step a (with its dashes) take an argument? */
+static int step_takes_arg(const char *a)
+{
+    static const char *const with[] = {"--until", "--prompt", "--type", "--key", "--wait",
+                                       "--ppm", "--disk", "--debug", NULL};
+    for (int k = 0; with[k]; k++)
+        if (!strcmp(a, with[k]))
+            return 1;
+    return 0;
+}
+
+/* One step: 0 passed, 1 failed, 2 not a step. */
+static int run_step(const char *a, const char *v)
+{
+    char text[4096], err[256];
+    int rc = 0;
+    int timeout_s = s_timeout_s;
+    if (!strcmp(a, "--until") && v)
+    {
+        int waited = 0;
+        while (!screen_has(v) && waited < timeout_s * 1000)
+        {
+            sleep_ms(20);
+            waited += 20;
+        }
+        if (!screen_has(v))
+        {
+            fprintf(stderr, "h89_headless: timed out waiting for \"%s\"\n", v);
+            print_screen();
+            rc = 1;
+        }
+    }
+    else if (!strcmp(a, "--prompt") && v)
+    {
+        int waited = 0;
+        while (!at_prompt(v) && waited < timeout_s * 1000)
+        {
+            sleep_ms(20);
+            waited += 20;
+        }
+        if (!at_prompt(v))
+        {
+            fprintf(stderr, "h89_headless: timed out waiting for the prompt \"%s\"\n", v);
+            print_screen();
+            rc = 1;
+        }
+    }
+    else if (!strcmp(a, "--type") && v)
+    {
+        unescape(v, text, sizeof text);
+        h89host_paste(text);
+        while (h89host_paste_pending())
+            sleep_ms(10);
+    }
+    else if (!strcmp(a, "--key") && v)
+    {
+        int k = key_by_name(v);
+        if (k < 0)
+        {
+            fprintf(stderr, "h89_headless: unknown key %s\n", v);
+            rc = 2;
+        }
+        else
+            h89host_key((unsigned)k, k == H89K_RESET);
+    }
+    else if (!strcmp(a, "--wait") && v)
+    {
+        sleep_ms(atoi(v));
+    }
+    else if (!strcmp(a, "--screen"))
+        print_screen();
+    else if (!strcmp(a, "--ppm") && v)
+    {
+        if (write_ppm(v) != 0)
+        {
+            fprintf(stderr, "h89_headless: cannot write %s\n", v);
+            rc = 1;
+        }
+    }
+    else if (!strcmp(a, "--disk") && v)
+    {
+        /* a relative path is relative to where we started: the
+         * in-process FujiNet moves the working directory */
+        char spec[3000];
+        const char *eq = strchr(v, '=');
+        if (eq && eq[1] != '/' && eq[1] != '\\' && !(eq[1] && eq[2] == ':'))
+            snprintf(spec, sizeof spec, "%.*s%s/%s", (int)(eq - v + 1), v, start_dir, eq + 1);
+        else
+            snprintf(spec, sizeof spec, "%s", v);
+        if (h89drive_insert_spec(spec, err, sizeof err) != 0)
+        {
+            fprintf(stderr, "h89_headless: %s: %s\n", v, err);
+            rc = 1;
+        }
+    }
+#ifdef H89_HEADLESS_SESSION
+    else if (!strcmp(a, "--debug") && v)
+    {
+        static char out[65536];
+        h89debug *d = h89session_debugger(s_sess);
+        h89debug_attach(d);
+        h89debug_command(d, v, out, sizeof out);
+        h89debug_detach(d);
+        printf("---- %s ----\n%s%s----------------\n", v, out,
+               out[0] && out[strlen(out) - 1] != '\n' ? "\n" : "");
+        fflush(stdout);
+    }
+#endif
+    else
+    {
+        usage();
+        rc = 2;
+    }
+    return rc;
+}
+
+/* Steps from standard input, until EOF: 0, or the first failure's. */
+static int run_stdin(void)
+{
+    char line[4096], step[4200];
+    while (fgets(line, sizeof line, stdin))
+    {
+        char *p = line, *arg;
+        int rc;
+        line[strcspn(line, "\r\n")] = 0;
+        while (*p == ' ')
+            p++;
+        if (!*p)
+            continue;
+        arg = strchr(p, ' ');
+        if (arg)
+        {
+            *arg++ = 0;
+            while (*arg == ' ')
+                arg++;
+        }
+        snprintf(step, sizeof step, "--%s", p);
+        if (step_takes_arg(step) && !arg)
+            rc = 2;
+        else
+            rc = run_step(step, arg);
+        printf("%s\n", rc ? "@@fail" : "@@ok");
+        fflush(stdout);
+    }
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -424,114 +583,25 @@ int main(int argc, char **argv)
 #endif
 
     int rc = 0;
+#ifdef H89_HEADLESS_SESSION
+    s_sess = sess;
+#endif
+    s_timeout_s = timeout_s;
     for (int i = first_step; i < argc && rc == 0; i++)
     {
-        const char *a = argv[i];
         const char *v = i + 1 < argc ? argv[i + 1] : NULL;
-        char text[4096];
-
-        if (!strcmp(a, "--until") && v)
-        {
-            int waited = 0;
-            i++;
-            while (!screen_has(v) && waited < timeout_s * 1000)
-            {
-                sleep_ms(20);
-                waited += 20;
-            }
-            if (!screen_has(v))
-            {
-                fprintf(stderr, "h89_headless: timed out waiting for \"%s\"\n", v);
-                print_screen();
-                rc = 1;
-            }
-        }
-        else if (!strcmp(a, "--prompt") && v)
-        {
-            int waited = 0;
-            i++;
-            while (!at_prompt(v) && waited < timeout_s * 1000)
-            {
-                sleep_ms(20);
-                waited += 20;
-            }
-            if (!at_prompt(v))
-            {
-                fprintf(stderr, "h89_headless: timed out waiting for the prompt \"%s\"\n", v);
-                print_screen();
-                rc = 1;
-            }
-        }
-        else if (!strcmp(a, "--type") && v)
-        {
-            i++;
-            unescape(v, text, sizeof text);
-            h89host_paste(text);
-            while (h89host_paste_pending())
-                sleep_ms(10);
-        }
-        else if (!strcmp(a, "--key") && v)
-        {
-            int k = key_by_name(argv[++i]);
-            if (k < 0)
-            {
-                fprintf(stderr, "h89_headless: unknown key %s\n", v);
-                rc = 2;
-            }
-            else
-                h89host_key((unsigned)k, k == H89K_RESET);
-        }
-        else if (!strcmp(a, "--wait") && v)
-        {
-            i++;
-            sleep_ms(atoi(v));
-        }
-        else if (!strcmp(a, "--screen"))
-            print_screen();
-        else if (!strcmp(a, "--ppm") && v)
-        {
-            i++;
-            if (write_ppm(v) != 0)
-            {
-                fprintf(stderr, "h89_headless: cannot write %s\n", v);
-                rc = 1;
-            }
-        }
-        else if (!strcmp(a, "--disk") && v)
-        {
-            /* a relative path is relative to where we started: the
-             * in-process FujiNet moves the working directory */
-            char spec[3000];
-            const char *eq = strchr(v, '=');
-            i++;
-            if (eq && eq[1] != '/' && eq[1] != '\\' && !(eq[1] && eq[2] == ':'))
-                snprintf(spec, sizeof spec, "%.*s%s/%s", (int)(eq - v + 1), v, start_dir, eq + 1);
-            else
-                snprintf(spec, sizeof spec, "%s", v);
-            if (h89drive_insert_spec(spec, err, sizeof err) != 0)
-            {
-                fprintf(stderr, "h89_headless: %s: %s\n", v, err);
-                rc = 1;
-            }
-        }
-#ifdef H89_HEADLESS_SESSION
-        else if (!strcmp(a, "--debug") && v)
-        {
-            static char out[65536];
-            h89debug *d = h89session_debugger(sess);
-            i++;
-            h89debug_attach(d);
-            h89debug_command(d, v, out, sizeof out);
-            h89debug_detach(d);
-            printf("---- %s ----\n%s%s----------------\n", v, out,
-                   out[0] && out[strlen(out) - 1] != '\n' ? "\n" : "");
-            fflush(stdout);
-        }
-#endif
-        else
+        if (!strcmp(argv[i], "--stdin"))
+            rc = run_stdin();
+        else if (step_takes_arg(argv[i]) && !v)
         {
             usage();
             rc = 2;
+        }
+        else
+        {
+            rc = run_step(argv[i], v);
+            if (step_takes_arg(argv[i]))
+                i++;
         }
     }
 
