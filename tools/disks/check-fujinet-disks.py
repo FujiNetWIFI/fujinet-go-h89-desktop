@@ -3,8 +3,8 @@
 # Check the disks tools/disks/make-fujinet-disks.sh made: read each data
 # disk's directory the way its operating system does and make sure that,
 # between them, the HDOS disks hold exactly fujinet-lib's .abs programs and
-# the CP/M disks exactly the files make-fujinet-disks.sh staged for them
-# (its .COM programs and FNON), once each.
+# the CP/M disks exactly the .COM programs make-fujinet-disks.sh staged for
+# them, once each.
 #
 # CP/M directories also get the checks that matter on Heath's CP/M 2.2.04:
 # no zeroed entry (DIR shows it as a nameless file) and no never-used entry

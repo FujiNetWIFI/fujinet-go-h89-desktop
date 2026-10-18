@@ -129,39 +129,13 @@ main()
     FujiNetCard           card("127.0.0.1", port, 40);
     FujiNetCard::setTrace(onTrace, g_traced);
 
-    // after /RESET the ESP32 is held in reset: no link, nothing dialled.
-    // Every port is an input: port C reads its pins, and PC2 reads 1 (the
-    // bus hold) although EN is low; port B reads FF.
-    CHECK(card.link() == FujiNetCard::LinkEspReset);
-    CHECK_EQ_INT(card.in(0xd2), 0x5c);
+    // after /RESET every port is an input: port C reads its pins (PC0-PC2,
+    // /OBF and IBF held at 1 by the bus hold, INTR at 0 by Q1), port B
+    // reads FF and its lamps are dark. The ESP32 runs from power-on, so the
+    // card dials FujiNet at once, whatever the 82C55A is doing.
+    CHECK_EQ_INT(card.in(0xd2), 0xf7);
     CHECK_EQ_INT(card.in(0xd1), 0xff);
-
-    // nothing answers outside mode 2: a byte written is never taken
-    card.out(0xd0, 'R');
-    card.notification(1024);
-    CHECK_EQ_INT(card.in(0xd2) & 0x80, 0);
-    CHECK_EQ_INT(card.state().bytesToEsp, 0);
-
-    // Heath CP/M's BIOS sets up 320Q's 8250: 83H leaves PC0-PC3 inputs and
-    // PC2 reads 0 from then on; PC4-PC7 are outputs, cleared
-    card.out(0xd3, 0x83);
-    CHECK_EQ_INT(card.in(0xd2), 0x08);
-    card.out(0xd1, 0x5a);
-    CHECK_EQ_INT(card.in(0xd1), 0xff);
-    CHECK(card.link() == FujiNetCard::LinkEspReset);
-    card.reset();
-    CHECK_EQ_INT(card.in(0xd2), 0x5c);
-
-    // portio.c's port_init(): mode 2 with EN and /OE (IO0) back up at once,
-    // then the set-up mark in port B, which reads back
-    card.out(0xd3, 0xc0);
-    card.out(0xd2, 0x06);
-    CHECK(card.link() == FujiNetCard::LinkWaiting || card.link() == FujiNetCard::LinkUp);
-    CHECK_EQ_INT(card.in(0xd1), 0x00);
-    card.out(0xd1, 0xa5);
-    CHECK_EQ_INT(card.in(0xd1), 0xa5);
-
-    // it dials FujiNet
+    CHECK_EQ_INT(card.state().lamps, 0x00);
     bool accepted = spin(card, [&] {
         if (g_peer == BAD_SOCK && readable(g_listen, 0))
         {
@@ -174,6 +148,37 @@ main()
     {
         return t_done("card");
     }
+
+    // nothing answers outside mode 2: a byte written is never taken
+    card.out(0xd0, 'R');
+    card.notification(1024);
+    CHECK_EQ_INT(card.in(0xd2) & 0x80, 0x80);
+    CHECK_EQ_INT(card.state().bytesToEsp, 0);
+
+    // Heath CP/M's BIOS sets up 320Q's 8250: 83H leaves PC0-PC3 inputs and
+    // makes PC4-PC7 outputs, cleared; port B is an input
+    card.out(0xd3, 0x83);
+    CHECK_EQ_INT(card.in(0xd2), 0x07);
+    card.out(0xd1, 0x5a);
+    CHECK_EQ_INT(card.in(0xd1), 0xff);
+    card.reset();
+    CHECK_EQ_INT(card.in(0xd2), 0xf7);
+
+    // the book's card_on: one mode word leaves DIR = 0 and /OE = 0, and
+    // port B an output at 00, every lamp lit
+    card.out(0xd3, 0xc0);
+    CHECK_EQ_INT(card.in(0xd2), 0x80);
+    CHECK_EQ_INT(card.in(0xd1), 0x00);
+    CHECK_EQ_INT(card.state().lamps, 0xff);
+
+    // portio.c's port_init() still raises PC2 with /OE and leaves A5H in
+    // port B: PC2 goes nowhere, and the mark reads back (four lamps lit)
+    card.out(0xd2, 0x06);
+    CHECK_EQ_INT(card.in(0xd2) & 0x07, 0x06);
+    card.out(0xd1, 0xa5);
+    CHECK_EQ_INT(card.in(0xd1), 0xa5);
+    CHECK_EQ_INT(card.state().lamps, 0x5a);
+    CHECK(card.link() == FujiNetCard::LinkUp);
 
     // BSR PC0 = 0, then the H89 -> ESP32 direction with the 245 enabled
     card.out(0xd3, 0x00);
@@ -219,52 +224,51 @@ main()
     CHECK(peerRead().empty());
     CHECK(g_traced[1].size() == 8);
 
-    // bytes FujiNet sent that the H89 never took (the 245 points the other
-    // way): EN falling throws them away, and the trace says so
-    card.out(0xd3, 0x01);   // DIR = H89 -> ESP32
-    send(g_peer, "LOST", 4, 0);
-    CHECK(spin(card, [&] { return card.state().rxQueued == 4; }));
-
     // the INTE bits through bit set/reset
     card.out(0xd3, 0x09);   // PC4 -> INTE2
     card.out(0xd3, 0x0d);   // PC6 -> INTE1
     CHECK_EQ_INT(card.in(0xd2) & 0x50, 0x50);
 
-    // EN low: the ESP32 is reset, FujiNet sees the connection close
-    card.out(0xd3, 0x04);
-    CHECK(card.link() == FujiNetCard::LinkEspReset);
-    CHECK(g_traced[2] == "LOST");
-    CHECK(g_traced[0] == "XYZ");
-    bool closed = false;
-    for (int i = 0; i < 40 && !closed; ++i)
-    {
-        char b;
-        if (readable(g_peer, 25))
-        {
-            closed = recv(g_peer, &b, 1, 0) <= 0;
-        }
-    }
-    CHECK(closed);
-    sock_close(g_peer);
-    g_peer = BAD_SOCK;
-
-    // EN rising with IO0 (PC1) low: the ESP32's ROM loader -- no link, and
-    // a byte written is never acknowledged
-    card.out(0xd3, 0x02);   // PC1 = 0
+    // neither PC2 nor a mode word touches the ESP32: the link stays up
+    card.out(0xd3, 0x04);   // PC2 = 0
     card.out(0xd3, 0x05);   // PC2 = 1
-    CHECK(card.link() == FujiNetCard::LinkEspDownload);
-    card.out(0xd0, 'Z');
-    for (int i = 0; i < 50; ++i)
+    card.out(0xd3, 0xc0);
+    CHECK_EQ_INT(card.in(0xd2), 0x80);
+    CHECK_EQ_INT(card.in(0xd1), 0x00);
+    for (int i = 0; i < 20; ++i)
     {
         card.notification(1024);
     }
-    CHECK((card.in(0xd2) & 0x80) == 0);
+    CHECK(card.link() == FujiNetCard::LinkUp);
+    CHECK(!readable(g_peer, 25));
 
-    // a mode word clears it all, the mark in port B too
+    // the H89's RESET reaches only the 82C55A: the ESP32 stays connected,
+    // but a reply it had in flight (here held back by /OE) is lost
+    card.out(0xd3, 0x03);   // PC1 (/OE) = 1
+    send(g_peer, "LOST", 4, 0);
+    CHECK(spin(card, [&] { return card.state().rxQueued == 4; }));
+    card.reset();
+    CHECK(card.link() == FujiNetCard::LinkUp);
+    CHECK_EQ_INT(card.state().rxQueued, 0);
+    CHECK(g_traced[2] == "LOST");
+    CHECK(g_traced[0] == "XYZ");
     card.out(0xd3, 0xc0);
-    CHECK_EQ_INT(card.in(0xd2), 0x80);
-    CHECK(card.link() == FujiNetCard::LinkEspReset);
-    CHECK_EQ_INT(card.in(0xd1), 0x00);
+    for (int i = 0; i < 20; ++i)
+    {
+        card.notification(1024);
+    }
+    CHECK((card.in(0xd2) & 0x20) == 0);
+    send(g_peer, "OK", 2, 0);
+    std::string after;
+    for (int i = 0; i < 2; ++i)
+    {
+        CHECK(spin(card, [&] { return (card.in(0xd2) & 0x20) != 0; }));
+        after += (char) card.in(0xd0);
+    }
+    CHECK(after == "OK");
+    CHECK(!readable(g_peer, 25));
+    CHECK_EQ_INT(card.state().connects, 1);
+    CHECK_EQ_INT(card.state().drops, 0);
 
     // the control register reads as floating
     CHECK_EQ_INT(card.in(0xd3), 0xff);

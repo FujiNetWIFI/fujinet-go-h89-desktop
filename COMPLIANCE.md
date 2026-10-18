@@ -37,9 +37,10 @@ repository:
   layout and the HDOS label (its volume serial on every track but the first).
 - Mark Garlanger's **H17Disk specification** (v2.0.0 and the earlier draft,
   heathkit.garlanger.com/diskformats/).
-- **fujinet-lib** `bus/h89/portio.c` and the **H89-ESP32 schematic v1.28**,
-  and N. Collado's "How to control the H89-FujiNet 82C55 in Mode 2": the
-  FujiNet card's registers and handshake.
+- **fujinet-lib** `bus/h89/portio.c`, the **H89-ESP32 schematic v1.28**,
+  J. Travis's **H89-ESP32-FUJINET Rev 1.1** schematic as reworked for
+  fujinet-firmware PR #2042, and N. Collado's "How to control the
+  H89-FujiNet 82C55 in Mode 2": the FujiNet card's registers and handshake.
 
 ## What is changed from VirtualH89
 
@@ -105,7 +106,6 @@ release workflow builds it with `tools/disks/make-fujinet-disks.sh`:
 | Disk | Origin | Licence |
 |---|---|---|
 | `fujinet-hdos-N.h8d`, `fujinet-cpm-N.h8d` | fujinet-lib's integration tests (`testing/`), built by the release workflow at a pinned fujinet-lib commit with z88dk | GPL-3.0; the zip carries `LICENSE.fujinet-lib` and names the source commit |
-| `FNON.COM`, `FNON.ASM` on a `fujinet-cpm-N.h8d` | this project's `tools/disks/fnon/`, which starts the card on a real H89; `FNON.COM` is committed, assembled with the 64K CP/M disk's own ASM and LOAD | GPL-3.0-or-later |
 | `hdos-2.0.h17disk` | HDOS 2.0, Mark Garlanger's capture of the distribution disk (heathkit.garlanger.com/software/OSes/HDOS/2.0/), unchanged | public domain: the page says "This software was placed in the public domain." |
 | `cpm-2.2.04-64k.h8d` | Heath/Zenith CP/M 2.2.04 for the H17 (Digital Research's CP/M 2.2 with Heath's BIOS and utilities): disk 1 of `CPM_2_2_04_Update.zip` from the Society of Eight-Bit Heath Computerists' archive (sebhc.github.io/sebhc/software.html), configured as a standard system and rebuilt for 64K with its own MOVCPM17 and SYSGEN | none stated |
 
@@ -113,8 +113,7 @@ The two boot disks are committed in `tools/disks/boot/`; they are the only
 disks in the repository. CI cannot rebuild the 64K CP/M disk, because that
 means booting it, and CI has no Heath ROMs. `make-fujinet-disks.sh
 --rebuild-cpm-boot` rebuilds it, byte for byte, on a machine that has the
-ROMs. `FNON.COM` is committed for the same reason, and `--rebuild-fnon`
-remakes it the same way. Shipping CP/M 2.2.04 was the maintainer's
+ROMs. Shipping CP/M 2.2.04 was the maintainer's
 decision (2026-10-11): it is not under a stated licence, but SEBHC's
 archive distributes it.
 

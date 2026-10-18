@@ -126,8 +126,9 @@ main()
         MachineContext::Scope scope(&ctx);
         FujiNetCard           card("127.0.0.1", H89SESSION_BOIP_PORT, 40);
 
-        // portio.c's port_init: mode 2, EN pulsed with /OE (IO0) high so
-        // the ESP32 boots its firmware, then /OE low
+        // portio.c's port_init: mode 2, then PC2 (once the ESP32's EN,
+        // wired to nothing on the reworked card) pulsed with /OE high, then
+        // /OE low
         card.out(0xd3, 0xc0);
         card.out(0xd2, 0x06);
         card.out(0xd2, 0x02);

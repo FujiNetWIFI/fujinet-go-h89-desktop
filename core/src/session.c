@@ -483,10 +483,6 @@ const char *h89session_card_link_text(int link)
     case 0: return "FujiNet is not running";
     case 1: return "FujiNet: connecting\xe2\x80\xa6";
     case 2: return "FujiNet: connected";
-    /* the 82C55 holds the ESP32's EN low from power-on until a program
-     * runs fujinet-lib's port_init: idle, not broken */
-    case 3: return "FujiNet card idle until a program starts it";
-    case 4: return "FujiNet card: ESP32 in its ROM loader";
     default: return "No FujiNet card";
     }
 }
