@@ -4,12 +4,14 @@
  *
  * Tabs: a Prompt (the engine's commands, Tab completion, a history), the
  * Z80 and memory, the disassembly (click a line for a breakpoint),
- * breakpoints, and the H89's parts as the engine reports them. The toolbar
- * steps, picks the radix (hex, octal, Heath's split octal), loads symbols
- * and saves. F5 run/stop, F7 step, F8 over, Shift+F8 out, F12 close.
+ * breakpoints, the H89's parts as the engine reports them, and FujiNet (the
+ * FujiBus packets on the card, both ways, beside the card's state). The
+ * toolbar steps, picks the radix (hex, octal, Heath's split octal), loads
+ * symbols and saves. F5 run/stop, F7 step, F8 over, Shift+F8 out, F12 close.
  *
  * Showing it attaches the engine (which stops the machine); hiding it
- * detaches and lets the machine run on.
+ * detaches and lets the machine run on. The FujiNet trace runs from the
+ * session's start, so its tab shows what happened before the window opened.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -32,6 +34,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSplitter>
 #include <QStringList>
 #include <QTabWidget>
 #include <QTextBlock>
@@ -48,6 +51,8 @@ namespace {
 
 constexpr int kDisasmRows = 48;
 constexpr int kMemRows = 32;
+constexpr int kTraceMax = 512;
+constexpr int kTabFujinet = 5;
 
 struct RegDef {
     const char *name;
@@ -71,6 +76,44 @@ QFont mono()
     return f;
 }
 
+QPlainTextEdit *monoView(bool wrap)
+{
+    auto *v = new QPlainTextEdit;
+    v->setReadOnly(true);
+    v->setFont(mono());
+    if (!wrap) v->setLineWrapMode(QPlainTextEdit::NoWrap);
+    return v;
+}
+
+QLabel *titleLabel(const QString &text)
+{
+    auto *l = new QLabel(text);
+    QFont f = l->font();
+    f.setBold(true);
+    l->setFont(f);
+    return l;
+}
+
+/* Whether a view's reader is at its end (a log then follows new lines). */
+bool atEnd(QPlainTextEdit *v)
+{
+    return v->verticalScrollBar()->value() >= v->verticalScrollBar()->maximum() - 1;
+}
+
+/* Replaces a view's text where the reader left it (a refresh must not throw
+ * a scrolled view back to its top), or, following, at its end. */
+void setText(QPlainTextEdit *v, const QString &text, bool follow = false)
+{
+    if (v->toPlainText() == text) {
+        if (follow) v->verticalScrollBar()->setValue(v->verticalScrollBar()->maximum());
+        return;
+    }
+    const int top = v->verticalScrollBar()->value(), left = v->horizontalScrollBar()->value();
+    v->setPlainText(text);
+    v->verticalScrollBar()->setValue(follow ? v->verticalScrollBar()->maximum() : top);
+    v->horizontalScrollBar()->setValue(left);
+}
+
 class Window : public QWidget {
 public:
     Window(h89session *session, QWidget *parent);
@@ -90,6 +133,7 @@ private:
     void refreshDisasm();
     void refreshBps();
     void refreshH89();
+    void refreshFujinet(bool force);
     void tick();
     bool parse(const QString &text, long *out);
     void say(const QString &msg);
@@ -128,6 +172,10 @@ private:
     QLineEdit *m_bpStart = nullptr, *m_bpEnd = nullptr, *m_bpCond = nullptr;
     QLabel *m_bpMsg = nullptr;
     QPlainTextEdit *m_h89 = nullptr;
+    QPlainTextEdit *m_fujiText = nullptr, *m_fujiState = nullptr;
+    QLabel *m_fujiNote = nullptr;
+    uint64_t m_fujiLast = 0;
+    int m_fujiCount = -1;
 };
 
 QPointer<Window> g_window;
@@ -400,11 +448,46 @@ Window::Window(h89session *session, QWidget *parent)
     m_h89->setReadOnly(true);
     m_h89->setFont(mono());
     m_tabs->addTab(m_h89, QStringLiteral("H89"));
+    /* FujiNet: the packets left (a note and Clear over them), the card right */
+    {
+        auto *split = new QSplitter(Qt::Horizontal);
+        auto *left = new QWidget;
+        auto *lv = new QVBoxLayout(left);
+        lv->addWidget(titleLabel(QStringLiteral("FujiBus packets (SLIP-decoded)")));
+        auto *row = new QHBoxLayout;
+        m_fujiNote = new QLabel;
+        m_fujiNote->setStyleSheet(QStringLiteral("color: gray;"));
+        m_fujiNote->setWordWrap(true);
+        auto *clear = new QPushButton(QStringLiteral("Clear"));
+        connect(clear, &QPushButton::clicked, this, [this] {
+            h89debug_fujinet_trace_clear(m_dbg);
+            refreshFujinet(true);
+        });
+        row->addWidget(m_fujiNote, 1);
+        row->addWidget(clear);
+        lv->addLayout(row);
+        m_fujiText = monoView(false);
+        lv->addWidget(m_fujiText, 1);
+        left->setMinimumWidth(520);
+
+        auto *right = new QWidget;
+        auto *rv = new QVBoxLayout(right);
+        rv->addWidget(titleLabel(QStringLiteral("FujiNet card (82C55)")));
+        m_fujiState = monoView(true);
+        rv->addWidget(m_fujiState, 1);
+        right->setMinimumWidth(300);
+        split->addWidget(left);
+        split->addWidget(right);
+        split->setStretchFactor(0, 3);
+        split->setStretchFactor(1, 2);
+        split->setChildrenCollapsible(false);
+        m_tabs->addTab(split, QStringLiteral("FujiNet"));
+    }
 
     {
         const QString tab = qEnvironmentVariable("H89_DEBUGGER_TAB");
-        const char *const names[] = { "prompt", "cpu", "disassembly", "breakpoints", "h89" };
-        for (int i = 0; i < 5; ++i)
+        const char *const names[] = { "prompt", "cpu", "disassembly", "breakpoints", "h89", "fujinet" };
+        for (int i = 0; i < 6; ++i)
             if (tab.compare(QLatin1String(names[i]), Qt::CaseInsensitive) == 0)
                 m_tabs->setCurrentIndex(i);
     }
@@ -412,6 +495,7 @@ Window::Window(h89session *session, QWidget *parent)
      * tab shows (otherwise the toolbar's first button would) */
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
         if (index == 0) m_promptIn->setFocus();
+        if (index == kTabFujinet) refreshFujinet(false);
     });
     if (m_tabs->currentIndex() == 0) m_promptIn->setFocus();
     connect(&m_timer, &QTimer::timeout, this, &Window::tick);
@@ -642,6 +726,35 @@ void Window::refreshH89()
     m_h89->verticalScrollBar()->setValue(pos);
 }
 
+void Window::refreshFujinet(bool force)
+{
+    static h89_fuji_packet p[kTraceMax];
+    static char state[4096];
+    const int n = h89debug_fujinet_trace(m_dbg, p, kTraceMax);
+    const int link = h89session_card_link(m_session);
+    if (!h89session_fujinet_running(m_session) && link != 2)
+        m_fujiNote->setText(QStringLiteral("FujiNet is off (Preferences ▸ FujiNet)."));
+    else
+        m_fujiNote->setText(link < 0 ? QStringLiteral("No FujiNet card")
+                                     : QString::fromUtf8(h89session_card_link_text(link)));
+    state[0] = '\0';
+    h89debug_fujinet_state(m_dbg, state, sizeof state);
+    setText(m_fujiState, QString::fromUtf8(state));
+
+    if (!force && n == m_fujiCount && (n == 0 || p[n - 1].serial == m_fujiLast)) return;
+    m_fujiCount = n;
+    m_fujiLast = n > 0 ? p[n - 1].serial : 0;
+    QString t;
+    for (int i = 0; i < n; ++i) {
+        t += QString::asprintf("%s%s\n     ", i ? "\n" : "", p[i].text);
+        for (int k = 0; k < p[i].nbytes && k < (int)sizeof p[i].data; ++k)
+            t += QString::asprintf("%02X ", p[i].data[k]);
+        if (p[i].nbytes > (int)sizeof p[i].data) t += QStringLiteral("…");
+    }
+    if (n == 0) t = QStringLiteral("(no FujiBus packets since the trace was cleared)");
+    setText(m_fujiText, t, force || atEnd(m_fujiText));
+}
+
 void Window::refreshAll()
 {
     refreshStatus();
@@ -650,6 +763,7 @@ void Window::refreshAll()
     refreshDisasm();
     refreshBps();
     refreshH89();
+    if (m_tabs->currentIndex() == kTabFujinet) refreshFujinet(false);
 }
 
 void Window::tick()
@@ -671,6 +785,7 @@ void Window::tick()
         refreshCpu();
         refreshMem();
         refreshH89();
+        if (m_tabs->currentIndex() == kTabFujinet) refreshFujinet(false);
     }
 }
 

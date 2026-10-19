@@ -106,6 +106,8 @@ void audio_stop(struct h89session *s);
  * comes back (a power cycle replaces it). */
 void h89debug_before_power_cycle(struct h89session *s);
 void h89debug_after_power_cycle(struct h89session *s);
+/* The FujiNet trace, from the session's start (the engine is created for it). */
+void h89debug_fujinet_hook(struct h89session *s);
 void h89debug_destroy(struct h89session *s);
 
 #ifdef __cplusplus

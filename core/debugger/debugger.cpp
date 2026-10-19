@@ -9,7 +9,8 @@
  * window resumes it -- the CPU's own progress is what stops. Detached, no
  * hook is installed, so a session that never opens the debugger pays
  * nothing. The family's design (the Master System sibling's engine), over
- * this machine.
+ * this machine. The FujiNet trace (fujitrace.h) is the exception: the card
+ * hands it its bytes from the session's start, attached or not.
  *
  * Threading. Everything public is called from UI threads; the hooks run on
  * the machine thread. Every public call that reads or edits the machine
@@ -26,6 +27,7 @@
 #include "debugger_internal.h"
 
 #include "expr.h"
+#include "fujitrace.h"
 #include "z80dasm.h"
 
 #include "FujiNetCard.h"
@@ -109,6 +111,8 @@ struct h89debug
     h89debug_trace   ring[TRACE_N];
     int              ring_head = 0, ring_count = 0;
 
+    FujiTrace fuji;   // its own lock: fed by the card hook, attached or not
+
     symtab           syms;
     std::atomic<int> radix{H89_RADIX_HEX};
 };
@@ -120,6 +124,13 @@ Machine*
 machine()
 {
     return h89host_machine();
+}
+
+// The card's bytes (FujiNetCard::setTrace), on the machine thread.
+void
+fuji_tap(void* user, int dir, const uint8_t* buf, size_t len)
+{
+    static_cast<h89debug*>(user)->fuji.feed(dir, buf, len);
 }
 
 void
@@ -604,8 +615,18 @@ h89debug_free(h89debug* d)
         return;
     }
     h89debug_detach(d);
+    FujiNetCard::unsetTrace(d);
     symtab_free(&d->syms);
     delete d;
+}
+
+extern "C" void
+h89debug_fujinet_install(h89debug* d)
+{
+    if (d)
+    {
+        FujiNetCard::setTrace(fuji_tap, d);
+    }
 }
 
 extern "C" void
@@ -1615,6 +1636,29 @@ h89debug_trace_clear(h89debug* d)
     d->ring_head  = 0;
     d->ring_count = 0;
     bump(d);
+}
+
+/* ---- FujiNet ------------------------------------------------------------------------------------ */
+
+extern "C" int
+h89debug_fujinet_trace(h89debug* d, h89_fuji_packet* out, int max)
+{
+    return d ? d->fuji.read(out, max) : 0;
+}
+
+extern "C" void
+h89debug_fujinet_trace_clear(h89debug* d)
+{
+    if (d)
+    {
+        d->fuji.clear();
+    }
+}
+
+extern "C" int
+h89debug_fujinet_state(h89debug* d, char* dst, int dstsz)
+{
+    return h89debug_section(d, H89DEBUG_SECTION_CARD, dst, dstsz);
 }
 
 /* ---- files ------------------------------------------------------------------------------------------- */

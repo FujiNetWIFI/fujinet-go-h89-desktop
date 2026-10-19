@@ -43,9 +43,14 @@ h89_add_test(h17_formats h17_formats_test)
 
 # The FujiNet card's 82C55 against a loopback TCP peer: mode and bit
 # set/reset, the status word, the handshake both ways, ESP32 reset and
-# download mode, back-pressure.
+# download mode, back-pressure, the bytes it hands the FujiNet trace.
 h89_test(card_test card_test.cpp)
 h89_add_test(card card_test)
+
+# The debugger's FujiNet trace on bytes of our own (no card, no FujiNet):
+# SLIP both ways, split input, x N for repeats, resets, the empty trace.
+h89_test(fujitrace_test fujitrace_test.cpp)
+h89_add_test(fujitrace fujitrace_test)
 
 # The machine with small test programs of our own (no Heath ROMs): the 2 ms
 # timer interrupt, ORG-0 and the H88 map, the MMS 77318's unlock and banks,

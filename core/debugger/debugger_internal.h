@@ -25,6 +25,9 @@ void h89debug_power_down(h89debug *d);
  * stops it at its first instruction, so a power cycle can be debugged from
  * the reset vector). */
 void h89debug_power_up(h89debug *d);
+/* Hook the FujiNet trace into the card, whatever card a power cycle builds;
+ * h89debug_free unhooks it. */
+void h89debug_fujinet_install(h89debug *d);
 
 /* For the prompt (prompt.c). */
 symtab *h89debug_symbols(h89debug *d);

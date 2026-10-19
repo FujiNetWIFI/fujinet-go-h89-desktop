@@ -9,6 +9,9 @@
 
 #include "rawpipe.h"
 
+#include <mutex>
+#include <vector>
+
 namespace
 {
 const BYTE PC_DIR = 0x01;   // 245 DIR: 1 = H89 -> ESP32
@@ -20,6 +23,40 @@ const BYTE PC_EN  = 0x04;   // ESP32 EN
 const unsigned pollCycles_c = 512;
 // a status read finding nothing services it too, but not more often than this
 const unsigned statusPollCycles_c = 64;
+
+// the debugger's FujiNet trace (setTrace); held while the hook runs
+std::mutex           traceMtx_s;
+FujiNetCard::TraceFn traceFn_s   = nullptr;
+void*                traceUser_s = nullptr;
+
+void
+trace(int dir, const uint8_t* buf, size_t len)
+{
+    std::lock_guard<std::mutex> lk(traceMtx_s);
+    if (traceFn_s)
+    {
+        traceFn_s(traceUser_s, dir, buf, len);
+    }
+}
+}
+
+void
+FujiNetCard::setTrace(TraceFn fn, void* user)
+{
+    std::lock_guard<std::mutex> lk(traceMtx_s);
+    traceFn_s   = fn;
+    traceUser_s = fn ? user : nullptr;
+}
+
+void
+FujiNetCard::unsetTrace(void* user)
+{
+    std::lock_guard<std::mutex> lk(traceMtx_s);
+    if (traceUser_s == user)
+    {
+        traceFn_s   = nullptr;
+        traceUser_s = nullptr;
+    }
 }
 
 FujiNetCard::FujiNetCard(const std::string& host, int port, unsigned ackDelayCycles):
@@ -65,8 +102,24 @@ FujiNetCard::reset()
     sincePoll_m    = 0;
     if (pipe_m)
     {
-        rawpipe_reset(pipe_m);
+        resetPipe();
     }
+}
+
+void
+FujiNetCard::resetPipe()
+{
+    // what FujiNet sent that the H89 has not taken is lost; the trace shows
+    // it dropped (and, with nothing, that a packet in flight was cut off)
+    std::vector<uint8_t> lost;
+    uint8_t              b;
+    lost.reserve(rawpipe_rx_avail(pipe_m));
+    while (rawpipe_get(pipe_m, &b))
+    {
+        lost.push_back(b);
+    }
+    trace(2, lost.data(), lost.size());
+    rawpipe_reset(pipe_m);
 }
 
 BYTE
@@ -109,7 +162,7 @@ FujiNetCard::setPortC(BYTE pc)
         // into reset: whatever the ESP32 had in flight is gone
         if (pipe_m)
         {
-            rawpipe_reset(pipe_m);
+            resetPipe();
         }
         ibf_m      = false;
         download_m = false;
@@ -120,7 +173,7 @@ FujiNetCard::setPortC(BYTE pc)
         download_m = (portC_m & PC_OE) == 0;
         if (pipe_m)
         {
-            rawpipe_reset(pipe_m);
+            resetPipe();
         }
         sincePoll_m = pollCycles_c; // connect at once
     }
@@ -292,6 +345,7 @@ FujiNetCard::fillInput()
         inLatch_m = b;
         ibf_m     = true;
         ++bytesFromEsp_m;
+        trace(0, &b, 1);
     }
 }
 
@@ -317,6 +371,7 @@ FujiNetCard::notification(unsigned int cycleCount)
                 {
                     ++bytesToEsp_m;
                     obfLow_m = false;
+                    trace(1, &outLatch_m, 1);
                 }
                 else
                 {

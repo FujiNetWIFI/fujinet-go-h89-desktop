@@ -4,7 +4,8 @@
  * The family's shape (smsdebug.h, nesdebug.h), with the H89's own parts in
  * place of a console's video chip: the terminal, the memory map, the timer
  * and interrupts, the disk controllers, the serial ports, the FujiNet card
- * and CP/NET -- as text sections the windows show and the prompt prints.
+ * and CP/NET -- as text sections the windows show and the prompt prints --
+ * and a trace of the FujiBus packets on the card.
  *
  * The engine only engages while a window holds it attached:
  * h89debug_attach() when the window opens -- which also stops the machine,
@@ -191,6 +192,26 @@ int  h89debug_trace_enabled(h89debug *d);
 /* Newest first; returns entries copied. */
 int  h89debug_trace_read(h89debug *d, h89debug_trace *out, int max);
 void h89debug_trace_clear(h89debug *d);
+
+/* ---- FujiNet: the card's bytes, as FujiBus packets ------------------------------------------- */
+/* The H89 frames its own packets in SLIP and the card passes the bytes
+ * through, so the trace takes them apart itself. It is on from the session's
+ * start, attached or not: what happened before anyone looked is the point. */
+typedef struct {
+    uint64_t serial;         /* new for each entry, and again when it repeats */
+    int      to_host;        /* 1: FujiNet -> H89, 0: H89 -> FujiNet */
+    int      device, command, length;   /* from the FujiBus header, -1 if short */
+    int      nbytes;
+    uint8_t  data[64];       /* the decoded packet's first bytes */
+    char     text[96];       /* "H89 -> FujiNet 70 E8 GET ADAPTERCONFIG (6 bytes)" */
+    uint32_t repeat;         /* byte-identical exchanges in a row ("x3" in text) */
+} h89_fuji_packet;
+/* The newest `max` packets, oldest first; returns the count. */
+int  h89debug_fujinet_trace(h89debug *d, h89_fuji_packet *out, int max);
+void h89debug_fujinet_trace_clear(h89debug *d);
+/* The FujiNet tab's state pane: the card's 82C55, its link and its byte
+ * counters (H89DEBUG_SECTION_CARD). Returns the length. */
+int  h89debug_fujinet_state(h89debug *d, char *dst, int dstsz);
 
 /* ---- files ---------------------------------------------------------------------------------- */
 /* kind: "dis" (the disassembly of memory as mapped now), "ram" (the 64K as

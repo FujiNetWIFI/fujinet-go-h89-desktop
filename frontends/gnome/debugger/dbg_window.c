@@ -4,18 +4,20 @@
  *
  * Tabs: a Prompt (the engine's command set, with Tab completion and a
  * command history), the Z80 and memory, the disassembly with breakpoints a
- * click away, breakpoints, and the H89 (the terminal, the memory map, the
+ * click away, breakpoints, the H89 (the terminal, the memory map, the
  * timer and interrupts, the disk controllers, the serial ports and the
- * FujiNet card, as the engine reports them). A toolbar carries the stepping
- * controls, the radix (hex, octal, or Heath's split octal), symbol loading
- * and saves; the family's keys apply (F5 run/stop, F7 step, F8 step over,
- * Shift+F8 step out, F12 close).
+ * FujiNet card, as the engine reports them), and FujiNet (the FujiBus
+ * packets on the card, both ways, beside the card's state). A toolbar
+ * carries the stepping controls, the radix (hex, octal, or Heath's split
+ * octal), symbol loading and saves; the family's keys apply (F5 run/stop,
+ * F7 step, F8 step over, Shift+F8 step out, F12 close).
  *
  * The engine engages only while this window shows: showing it attaches
  * (which stops the machine, as on every sibling), hiding it detaches and
  * lets the machine run on. The window polls the engine's generation
  * counter and refreshes when something changed, and twice a second while
- * the machine runs.
+ * the machine runs. The FujiNet trace runs from the session's start, so
+ * its tab shows what happened before the window opened.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -32,6 +34,8 @@
 #define DISASM_WINDOW 48
 #define NREGS 17
 #define MEM_ROWS 32
+#define TRACE_MAX 512
+#define TAB_FUJINET 5
 
 typedef struct {
     GtkWindow *win;
@@ -75,6 +79,11 @@ typedef struct {
     GtkLabel *bp_msg;
 
     GtkTextView *h89_text;
+
+    GtkTextView *fuji_text, *fuji_state;
+    GtkLabel *fuji_note;
+    uint64_t fuji_last;
+    int fuji_count;
 } DbgWin;
 
 static DbgWin *g_win;
@@ -89,32 +98,104 @@ static const struct { const char *name; int reg; int wide; } k_regs[NREGS] = {
 };
 
 /* The tabs, in order, by the names H89_DEBUGGER_TAB takes. */
-static const char *const k_tab_names[] = { "prompt", "cpu", "disassembly", "breakpoints", "h89" };
+static const char *const k_tab_names[] = { "prompt", "cpu", "disassembly", "breakpoints", "h89",
+                                           "fujinet" };
 
 /* ---- helpers --------------------------------------------------------------------- */
 
-/* Replaces a view's text where the reader left it. */
-static void set_text(GtkTextView *view, const char *text)
+/* Engine text for a text buffer: valid UTF-8, control bytes dropped. */
+static char *clean_text(const char *text)
+{
+    char *v = g_utf8_make_valid(text, -1), *s, *d;
+    for (s = d = v; *s; s++)
+        if ((unsigned char)*s >= 0x20 || *s == '\n' || *s == '\t')
+            *d++ = *s;
+    *d = '\0';
+    return v;
+}
+
+static GtkAdjustment *vadj(GtkTextView *view)
+{
+    GtkWidget *parent = gtk_widget_get_parent(GTK_WIDGET(view));
+    return GTK_IS_SCROLLED_WINDOW(parent)
+        ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(parent)) : NULL;
+}
+
+static gboolean at_end(GtkAdjustment *adj)
+{
+    return gtk_adjustment_get_value(adj) + gtk_adjustment_get_page_size(adj) >=
+           gtk_adjustment_get_upper(adj) - 2.0;
+}
+
+/* A log (the FujiNet trace) follows its end while its reader is there. New
+ * text grows the view only once it is laid out (or its tab first shows),
+ * so the end is pinned whenever the view's height changes; whether to
+ * follow is decided as text arrives. */
+static gboolean following(GtkTextView *view)
+{
+    return GPOINTER_TO_INT(g_object_get_data(G_OBJECT(view), "follow")) != 0;
+}
+
+static void on_log_resized(GtkAdjustment *adj, gpointer view)
+{
+    if (following(view))
+        gtk_adjustment_set_value(adj, gtk_adjustment_get_upper(adj) -
+                                      gtk_adjustment_get_page_size(adj));
+}
+
+static void make_log(GtkTextView *view)
+{
+    g_object_set_data(G_OBJECT(view), "follow", GINT_TO_POINTER(1));
+    g_signal_connect(vadj(view), "changed", G_CALLBACK(on_log_resized), view);
+}
+
+/* Before new text: follow if the reader is at the end (or never looked). */
+static void log_note_reader(GtkTextView *view)
+{
+    GtkAdjustment *adj = vadj(view);
+    g_object_set_data(G_OBJECT(view), "follow", GINT_TO_POINTER(
+        gtk_adjustment_get_page_size(adj) <= 0.0 || at_end(adj)));
+}
+
+static void log_to_end(GtkTextView *view)
+{
+    g_object_set_data(G_OBJECT(view), "follow", GINT_TO_POINTER(1));
+    on_log_resized(vadj(view), view);
+}
+
+/* Replaces a view's text where the reader left it (a refresh must not throw
+ * a scrolled view back to its top), or, following, at its end. */
+static void set_text_at(GtkTextView *view, const char *text, gboolean follow)
 {
     GtkTextBuffer *b = gtk_text_view_get_buffer(view);
-    GtkWidget *parent = gtk_widget_get_parent(GTK_WIDGET(view));
-    GtkAdjustment *adj = GTK_IS_SCROLLED_WINDOW(parent)
-        ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(parent)) : NULL;
+    GtkAdjustment *adj = vadj(view);
+    char *clean = clean_text(text);
+    GtkTextMark *mark;
     GtkTextIter it;
     int top = 0;
 
-    if (adj && gtk_adjustment_get_value(adj) > 0.0) {
+    if (!follow && adj && gtk_adjustment_get_value(adj) > 0.0) {
         gtk_text_view_get_line_at_y(view, &it, (int)gtk_adjustment_get_value(adj), NULL);
         top = gtk_text_iter_get_line(&it);
     }
-    gtk_text_buffer_set_text(b, text, -1);
-    if (top > 0) {
-        GtkTextMark *mark;
-        gtk_text_buffer_get_iter_at_line(b, &it, top);
-        mark = gtk_text_buffer_create_mark(b, NULL, &it, TRUE);
-        gtk_text_view_scroll_to_mark(view, mark, 0.0, TRUE, 0.0, 0.0);
-        gtk_text_buffer_delete_mark(b, mark);
+    gtk_text_buffer_set_text(b, clean, -1);
+    g_free(clean);
+    if (follow) {
+        log_to_end(view);
+        return;
     }
+    if (top <= 0)
+        return;
+    /* scroll_to_mark waits for the new text's layout */
+    gtk_text_buffer_get_iter_at_line(b, &it, top);
+    mark = gtk_text_buffer_create_mark(b, NULL, &it, TRUE);
+    gtk_text_view_scroll_to_mark(view, mark, 0.0, TRUE, 0.0, 0.0);
+    gtk_text_buffer_delete_mark(b, mark);
+}
+
+static void set_text(GtkTextView *view, const char *text)
+{
+    set_text_at(view, text, FALSE);
 }
 
 static void append_text(GtkTextView *view, GtkScrolledWindow *scroll, const char *text)
@@ -183,6 +264,23 @@ static GtkWidget *padded(GtkWidget *w)
     gtk_widget_set_margin_start(w, 8);
     gtk_widget_set_margin_end(w, 8);
     return w;
+}
+
+static GtkWidget *hint_label(const char *text)
+{
+    GtkWidget *l = gtk_label_new(text);
+    gtk_widget_add_css_class(l, "dim-label");
+    gtk_label_set_wrap(GTK_LABEL(l), TRUE);
+    gtk_label_set_xalign(GTK_LABEL(l), 0);
+    return l;
+}
+
+static GtkWidget *title_label(const char *text)
+{
+    GtkWidget *l = gtk_label_new(text);
+    gtk_widget_add_css_class(l, "heading");
+    gtk_label_set_xalign(GTK_LABEL(l), 0);
+    return l;
 }
 
 static void accent_tag(GtkTextView *view, const char *name)
@@ -303,6 +401,43 @@ static void refresh_h89(DbgWin *w)
     set_text(w->h89_text, text);
 }
 
+static void refresh_fujinet(DbgWin *w, gboolean force)
+{
+    static h89_fuji_packet p[TRACE_MAX];
+    static char state[4096];
+    GString *t;
+    char note[200];
+    int n = h89debug_fujinet_trace(w->dbg, p, TRACE_MAX), i;
+    const int link = h89session_card_link(w->session);
+
+    if (!h89session_fujinet_running(w->session) && link != 2)
+        g_strlcpy(note, "FujiNet is off (Preferences \xe2\x96\xb8 FujiNet).", sizeof note);
+    else
+        g_strlcpy(note, link < 0 ? "No FujiNet card" : h89session_card_link_text(link), sizeof note);
+    gtk_label_set_text(w->fuji_note, note);
+    h89debug_fujinet_state(w->dbg, state, sizeof state);
+    set_text(w->fuji_state, state);
+
+    if (!force && n == w->fuji_count && (n == 0 || p[n - 1].serial == w->fuji_last))
+        return;
+    w->fuji_count = n;
+    w->fuji_last = n > 0 ? p[n - 1].serial : 0;
+    log_note_reader(w->fuji_text);
+    t = g_string_new(NULL);
+    for (i = 0; i < n; i++) {
+        int k;
+        g_string_append_printf(t, "%s%s\n     ", i ? "\n" : "", p[i].text);
+        for (k = 0; k < p[i].nbytes && k < (int)sizeof p[i].data; k++)
+            g_string_append_printf(t, "%02X ", p[i].data[k]);
+        if (p[i].nbytes > (int)sizeof p[i].data)
+            g_string_append(t, "\xe2\x80\xa6");
+    }
+    if (n == 0)
+        g_string_append(t, "(no FujiBus packets since the trace was cleared)");
+    set_text_at(w->fuji_text, t->str, force || following(w->fuji_text));
+    g_string_free(t, TRUE);
+}
+
 static void bp_enable_toggled(GtkCheckButton *b, gpointer ud);
 static void bp_remove_clicked(GtkButton *b, gpointer ud);
 
@@ -397,6 +532,8 @@ static void refresh_all(DbgWin *w)
     refresh_disasm(w);
     refresh_bps(w);
     refresh_h89(w);
+    if (gtk_notebook_get_current_page(w->notebook) == TAB_FUJINET)
+        refresh_fujinet(w, FALSE);
 }
 
 static void attach_and_refresh(DbgWin *w);
@@ -427,6 +564,8 @@ static gboolean tick_refresh(gpointer ud)
         refresh_cpu(w);
         refresh_mem(w);
         refresh_h89(w);
+        if (gtk_notebook_get_current_page(w->notebook) == TAB_FUJINET)
+            refresh_fujinet(w, FALSE);
     }
     return G_SOURCE_CONTINUE;
 }
@@ -694,6 +833,14 @@ static void on_bp_clear(GtkButton *b, gpointer ud)
     (void)b;
     h89debug_breakpoint_clear(w->dbg);
     refresh_all(w);
+}
+
+static void on_fuji_clear(GtkButton *b, gpointer ud)
+{
+    DbgWin *w = ud;
+    (void)b;
+    h89debug_fujinet_trace_clear(w->dbg);
+    refresh_fujinet(w, TRUE);
 }
 
 static void on_symbols_chosen(GObject *src, GAsyncResult *res, gpointer ud)
@@ -1004,6 +1151,40 @@ static GtkWidget *build_bps(DbgWin *w)
     return padded(box);
 }
 
+/* The packets left, a note and Clear over them; the card's state right. */
+static GtkWidget *build_fujinet(DbgWin *w)
+{
+    GtkWidget *paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    GtkWidget *left = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    GtkWidget *right = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *clear = gtk_button_new_with_label("Clear");
+
+    w->fuji_note = GTK_LABEL(hint_label(""));
+    gtk_widget_set_hexpand(GTK_WIDGET(w->fuji_note), TRUE);
+    g_signal_connect(clear, "clicked", G_CALLBACK(on_fuji_clear), w);
+    gtk_box_append(GTK_BOX(row), GTK_WIDGET(w->fuji_note));
+    gtk_box_append(GTK_BOX(row), clear);
+    gtk_box_append(GTK_BOX(left), title_label("FujiBus packets (SLIP-decoded)"));
+    gtk_box_append(GTK_BOX(left), row);
+    gtk_box_append(GTK_BOX(left), mono_view(&w->fuji_text, FALSE));
+    make_log(w->fuji_text);
+
+    gtk_box_append(GTK_BOX(right), title_label("FujiNet card (82C55)"));
+    gtk_box_append(GTK_BOX(right), mono_view(&w->fuji_state, FALSE));
+    gtk_text_view_set_wrap_mode(w->fuji_state, GTK_WRAP_WORD_CHAR);
+
+    gtk_paned_set_start_child(GTK_PANED(paned), left);
+    gtk_paned_set_end_child(GTK_PANED(paned), right);
+    gtk_paned_set_shrink_start_child(GTK_PANED(paned), FALSE);
+    gtk_paned_set_shrink_end_child(GTK_PANED(paned), FALSE);
+    gtk_paned_set_resize_end_child(GTK_PANED(paned), FALSE);
+    gtk_widget_set_size_request(left, 560, -1);
+    gtk_widget_set_size_request(right, 320, -1);
+    w->fuji_count = -1;
+    return padded(paned);
+}
+
 static void attach_and_refresh(DbgWin *w)
 {
     h89debug_attach(w->dbg);     /* stops the machine */
@@ -1036,7 +1217,8 @@ static void on_switch_page(GtkNotebook *nb, GtkWidget *page, guint num, gpointer
 {
     (void)nb;
     (void)page;
-    (void)num;
+    if (num == TAB_FUJINET)
+        refresh_fujinet(ud, FALSE);
     focus_prompt_if_shown(ud);
 }
 
@@ -1078,6 +1260,7 @@ void h89_debugger_show(GtkWindow *parent, h89session *session)
         GtkWidget *scroll = mono_view(&w->h89_text, FALSE);
         gtk_notebook_append_page(w->notebook, padded(scroll), gtk_label_new("H89"));
     }
+    gtk_notebook_append_page(w->notebook, build_fujinet(w), gtk_label_new("FujiNet"));
     box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_box_append(GTK_BOX(box), build_toolbar(w));
     gtk_widget_set_vexpand(GTK_WIDGET(w->notebook), TRUE);
@@ -1094,7 +1277,7 @@ void h89_debugger_show(GtkWindow *parent, h89session *session)
     g_signal_connect(keys, "key-pressed", G_CALLBACK(on_key), w);
     gtk_widget_add_controller(GTK_WIDGET(w->win), keys);
 
-    /* H89_DEBUGGER_TAB=prompt|cpu|disassembly|breakpoints|h89 */
+    /* H89_DEBUGGER_TAB=prompt|cpu|disassembly|breakpoints|h89|fujinet */
     {
         const char *tab = g_getenv("H89_DEBUGGER_TAB");
         for (unsigned i = 0; tab && i < G_N_ELEMENTS(k_tab_names); i++)

@@ -1,7 +1,8 @@
 /*
  * card -- the FujiNet card's 82C55 (core/machine/FujiNetCard) against a
  * loopback TCP peer standing in for FujiNet's BoIP listener: the sequence
- * fujinet-lib's bus/h89/portio.c drives, byte for byte.
+ * fujinet-lib's bus/h89/portio.c drives, byte for byte, and the bytes the
+ * debugger's FujiNet trace is handed.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -36,6 +37,19 @@ namespace
 {
 
 sock_t g_listen = BAD_SOCK, g_peer = BAD_SOCK;
+
+// what the debugger's FujiNet trace was handed, by dir
+std::string g_traced[3];
+
+void
+onTrace(void* user, int dir, const uint8_t* buf, size_t len)
+{
+    (void) user;
+    if (dir >= 0 && dir < 3)
+    {
+        g_traced[dir].append((const char*) buf, len);
+    }
+}
 
 int
 listenAny()
@@ -113,6 +127,7 @@ main()
     MachineContext        ctx;
     MachineContext::Scope scope(&ctx);
     FujiNetCard           card("127.0.0.1", port, 40);
+    FujiNetCard::setTrace(onTrace, g_traced);
 
     // after /RESET the ESP32 is held in reset: no link, nothing dialled.
     // Every port is an input: port C reads its pins, and PC2 reads 1 (the
@@ -181,6 +196,7 @@ main()
         got += peerRead();
     }
     CHECK(got == std::string(frame, 8));
+    CHECK(g_traced[1] == std::string(frame, 8));
 
     // bytes in: the 245 turned back, IBF rises per byte, port A takes it
     card.out(0xd3, 0x00);   // DIR = ESP32 -> H89
@@ -192,6 +208,7 @@ main()
         in += (char) card.in(0xd0);
     }
     CHECK(in == "XYZ");
+    CHECK(g_traced[0] == "XYZ");
     CHECK((card.in(0xd2) & 0x20) == 0);
 
     // the 245 pointing the wrong way: the ESP32 still acks, nothing arrives
@@ -200,6 +217,13 @@ main()
     CHECK(card.state().txDropped == 1);
     card.notification(1024);
     CHECK(peerRead().empty());
+    CHECK(g_traced[1].size() == 8);
+
+    // bytes FujiNet sent that the H89 never took (the 245 points the other
+    // way): EN falling throws them away, and the trace says so
+    card.out(0xd3, 0x01);   // DIR = H89 -> ESP32
+    send(g_peer, "LOST", 4, 0);
+    CHECK(spin(card, [&] { return card.state().rxQueued == 4; }));
 
     // the INTE bits through bit set/reset
     card.out(0xd3, 0x09);   // PC4 -> INTE2
@@ -209,6 +233,8 @@ main()
     // EN low: the ESP32 is reset, FujiNet sees the connection close
     card.out(0xd3, 0x04);
     CHECK(card.link() == FujiNetCard::LinkEspReset);
+    CHECK(g_traced[2] == "LOST");
+    CHECK(g_traced[0] == "XYZ");
     bool closed = false;
     for (int i = 0; i < 40 && !closed; ++i)
     {
@@ -243,6 +269,7 @@ main()
     // the control register reads as floating
     CHECK_EQ_INT(card.in(0xd3), 0xff);
 
+    FujiNetCard::unsetTrace(g_traced);
     sock_close(g_listen);
     return t_done("card");
 }

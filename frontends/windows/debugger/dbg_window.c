@@ -4,10 +4,12 @@
  *
  * Tabs: the Prompt (the engine's commands, Tab completion, a history), the
  * CPU and memory (registers set by name, any radix), the disassembly
- * (double-click a line for a breakpoint), breakpoints, and the H89's parts
- * as the engine reports them. F5 run/stop, F7 step, F8 over, Shift+F8 out,
- * F12 close. Showing it attaches the engine (which stops the machine);
- * hiding it detaches.
+ * (double-click a line for a breakpoint), breakpoints, the H89's parts as
+ * the engine reports them, and FujiNet (the FujiBus packets on the card,
+ * both ways, beside the card's state). F5 run/stop, F7 step, F8 over,
+ * Shift+F8 out, F12 close. Showing it attaches the engine (which stops the
+ * machine); hiding it detaches. The FujiNet trace runs from the session's
+ * start, so its tab shows what happened before the window opened.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -18,6 +20,7 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,8 +29,10 @@
 #include "../resource.h"
 #include "../win_common.h"
 
-#define NTABS 5
+#define NTABS 6
+#define TAB_FUJINET 5
 #define DIS_ROWS 48
+#define TRACE_MAX 512
 #define IDT_POLL 1
 #define U(v) h89w_px(v)
 
@@ -38,11 +43,15 @@ enum {
     ID_DIS = 400, ID_FOLLOW, ID_JUMP,
     ID_BPS = 500, ID_BP_TYPE, ID_BP_START, ID_BP_END, ID_BP_COND, ID_BP_ADD, ID_BP_DEL, ID_BP_CLEAR,
     ID_H89 = 600,
+    ID_FUJI_CLEAR = 700, ID_FUJI_TEXT, ID_FUJI_STATE,
 };
 
 static HWND g_dw, g_tab, g_page[NTABS], g_status, g_run, g_radix;
 static HWND g_out, g_in, g_regs, g_mem_goto, g_mem, g_reg_name, g_reg_val;
 static HWND g_dis, g_follow, g_jump, g_bps, g_bp_type, g_bp_start, g_bp_end, g_bp_cond, g_h89;
+static HWND g_fuji_title, g_fuji_note, g_fuji_text, g_state_title, g_fuji_state;
+static uint64_t g_fuji_last;
+static int g_fuji_count = -1;
 static HWND g_focus;
 static h89session *g_s;
 static h89debug *g_d;
@@ -107,6 +116,100 @@ static void append_out(const char *text)
     SendMessageA(g_out, EM_SETSEL, (WPARAM)len, (LPARAM)len);
     SendMessageA(g_out, EM_REPLACESEL, FALSE, (LPARAM)buf);
     free(buf);
+}
+
+/* EDIT controls want CR LF and draw control characters as boxes: engine
+ * text (UTF-8) as the wide text a view shows. */
+static wchar_t *wide_view_text(const char *text)
+{
+    size_t n = strlen(text), o = 0;
+    char *buf = malloc(n * 2 + 1);
+    wchar_t *w = NULL;
+    int wn;
+    if (!buf)
+        return NULL;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)text[i];
+        if (c == '\n') {
+            buf[o++] = '\r';
+            buf[o++] = '\n';
+        } else if (c >= 0x20 || c == '\t') {
+            buf[o++] = (char)c;
+        }
+    }
+    buf[o] = '\0';
+    wn = MultiByteToWideChar(CP_UTF8, 0, buf, -1, NULL, 0);
+    if (wn > 0 && (w = malloc((size_t)wn * sizeof *w)) != NULL)
+        MultiByteToWideChar(CP_UTF8, 0, buf, -1, w, wn);
+    free(buf);
+    return w;
+}
+
+/* A label's UTF-8 text, set only when it changed (no flicker). */
+static void set_label(HWND h, const char *utf8)
+{
+    wchar_t cur[512], w[512];
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, w, 512) <= 0)
+        w[0] = 0;
+    w[511] = 0;
+    GetWindowTextW(h, cur, 512);
+    if (wcscmp(cur, w) != 0)
+        SetWindowTextW(h, w);
+}
+
+/* The rows an EDIT view in the monospaced font shows. */
+static int edit_rows(HWND h)
+{
+    static int line_h;
+    RECT c;
+    if (!line_h) {
+        HDC dc = GetDC(h);
+        HGDIOBJ prev = SelectObject(dc, h89w_mono_font());
+        TEXTMETRICA tm;
+        line_h = GetTextMetricsA(dc, &tm) && tm.tmHeight > 0 ? tm.tmHeight : U(16);
+        SelectObject(dc, prev);
+        ReleaseDC(h, dc);
+    }
+    GetClientRect(h, &c);
+    return c.bottom > line_h ? c.bottom / line_h : 1;
+}
+
+/* A log (the FujiNet trace) follows its end while its reader is there. */
+static int edit_at_end(HWND h)
+{
+    const int first = (int)SendMessageW(h, EM_GETFIRSTVISIBLELINE, 0, 0);
+    const int count = (int)SendMessageW(h, EM_GETLINECOUNT, 0, 0);
+    return first + edit_rows(h) >= count;
+}
+
+/* Replaces a view's text where the reader left it (a refresh must not throw
+ * a scrolled view back to its top), or, following, at its end. */
+static void set_text_at(HWND h, const char *text, int follow)
+{
+    const int first = (int)SendMessageW(h, EM_GETFIRSTVISIBLELINE, 0, 0);
+    wchar_t *w = wide_view_text(text);
+    if (!w)
+        return;
+    SendMessageW(h, WM_SETREDRAW, FALSE, 0);
+    SetWindowTextW(h, w);
+    SendMessageW(h, EM_LINESCROLL, 0, follow ? SendMessageW(h, EM_GETLINECOUNT, 0, 0) : first);
+    SendMessageW(h, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(h, NULL, TRUE);
+    free(w);
+}
+
+static size_t addf(char *s, size_t len, size_t cap, const char *fmt, ...)
+{
+    va_list ap;
+    int n;
+    if (len >= cap)
+        return len;
+    va_start(ap, fmt);
+    n = vsnprintf(s + len, cap - len, fmt, ap);
+    va_end(ap);
+    if (n < 0)
+        return len;
+    return len + (size_t)n < cap ? len + (size_t)n : cap - 1;
 }
 
 static int parse(HWND e, long *out)
@@ -225,6 +328,41 @@ static void refresh_h89(void)
     set_edit(g_h89, text);
 }
 
+static void refresh_fujinet(int force)
+{
+    static h89_fuji_packet p[TRACE_MAX];
+    static char t[TRACE_MAX * 320 + 128];
+    static char state[4096];
+    const int link = h89session_card_link(g_s);
+    size_t len = 0;
+    int n = h89debug_fujinet_trace(g_d, p, TRACE_MAX), follow;
+
+    if (!h89session_fujinet_running(g_s) && link != 2)
+        set_label(g_fuji_note, "FujiNet is off (Preferences \xe2\x96\xb8 FujiNet).");
+    else
+        set_label(g_fuji_note, link < 0 ? "No FujiNet card" : h89session_card_link_text(link));
+    state[0] = '\0';
+    h89debug_fujinet_state(g_d, state, sizeof state);
+    set_text_at(g_fuji_state, state, 0);
+
+    if (!force && n == g_fuji_count && (n == 0 || p[n - 1].serial == g_fuji_last))
+        return;
+    follow = force || g_fuji_count < 0 || edit_at_end(g_fuji_text);
+    g_fuji_count = n;
+    g_fuji_last = n > 0 ? p[n - 1].serial : 0;
+    t[0] = '\0';
+    for (int i = 0; i < n; i++) {
+        len = addf(t, len, sizeof t, "%s%s\n     ", i ? "\n" : "", p[i].text);
+        for (int k = 0; k < p[i].nbytes && k < (int)sizeof p[i].data; k++)
+            len = addf(t, len, sizeof t, "%02X ", p[i].data[k]);
+        if (p[i].nbytes > (int)sizeof p[i].data)
+            len = addf(t, len, sizeof t, "\xe2\x80\xa6");
+    }
+    if (n == 0)
+        len = addf(t, len, sizeof t, "(no FujiBus packets since the trace was cleared)");
+    set_text_at(g_fuji_text, t, follow);
+}
+
 static void refresh_all(void)
 {
     refresh_status();
@@ -232,6 +370,8 @@ static void refresh_all(void)
     refresh_dis();
     refresh_bps();
     refresh_h89();
+    if (TabCtrl_GetCurSel(g_tab) == TAB_FUJINET)
+        refresh_fujinet(0);
 }
 
 static void attach(void)
@@ -263,6 +403,8 @@ static void poll(void)
         refresh_status();
         refresh_cpu();
         refresh_h89();
+        if (TabCtrl_GetCurSel(g_tab) == TAB_FUJINET)
+            refresh_fujinet(0);
     }
 }
 
@@ -430,6 +572,10 @@ static void on_command(int id, int notify)
         break;
     }
     case ID_BP_CLEAR: h89debug_breakpoint_clear(g_d); break;
+    case ID_FUJI_CLEAR:
+        h89debug_fujinet_trace_clear(g_d);
+        refresh_fujinet(1);
+        return;
     default:
         return;
     }
@@ -556,6 +702,18 @@ static void layout(void)
     SetWindowPos(GetDlgItem(g_page[3], ID_BP_ADD), NULL, U(6), h - U(34), U(80), U(26), SWP_NOZORDER);
     SetWindowPos(GetDlgItem(g_page[3], ID_BP_DEL), NULL, U(92), h - U(34), U(80), U(26), SWP_NOZORDER);
     SetWindowPos(GetDlgItem(g_page[3], ID_BP_CLEAR), NULL, U(178), h - U(34), U(80), U(26), SWP_NOZORDER);
+    /* FujiNet: the packets left (a note and Clear over them), the card right */
+    {
+        const int rw = w / 3 > U(360) ? U(360) : w / 3 > U(240) ? w / 3 : U(240);
+        const int lw = w - rw - U(18);
+        MoveWindow(g_fuji_title, U(6), U(8), lw, U(18), TRUE);
+        MoveWindow(g_fuji_note, U(6), U(36), lw - U(92), U(18), TRUE);
+        SetWindowPos(GetDlgItem(g_page[TAB_FUJINET], ID_FUJI_CLEAR), NULL, U(6) + lw - U(80), U(30), U(80), U(26),
+                     SWP_NOZORDER);
+        MoveWindow(g_fuji_text, U(6), U(62), lw, h - U(68), TRUE);
+        MoveWindow(g_state_title, U(12) + lw, U(8), rw, U(18), TRUE);
+        MoveWindow(g_fuji_state, U(12) + lw, U(30), rw, h - U(36), TRUE);
+    }
 }
 
 static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -572,6 +730,8 @@ static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 ShowWindow(g_page[i], i == sel ? SW_SHOW : SW_HIDE);
             if (sel == 0)
                 SetFocus(g_in);
+            if (sel == TAB_FUJINET)
+                refresh_fujinet(0);
         }
         return 0;
     case WM_COMMAND:
@@ -604,7 +764,8 @@ static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 static void build(HWND owner)
 {
-    static const char *const tabs[NTABS] = { "Prompt", "CPU && Memory", "Disassembly", "Breakpoints", "H89" };
+    static const char *const tabs[NTABS] = { "Prompt", "CPU && Memory", "Disassembly", "Breakpoints", "H89",
+                                             "FujiNet" };
     HINSTANCE inst = (HINSTANCE)GetWindowLongPtr(owner, GWLP_HINSTANCE);
     HFONT f = h89w_font(), m = h89w_mono_font();
     WNDCLASSA wc;
@@ -695,10 +856,19 @@ static void build(HWND owner)
     ctl(g_page[3], "BUTTON", "Clear All", 0, 0, 0, 10, 10, ID_BP_CLEAR, f);
     /* H89 */
     g_h89 = ctl(g_page[4], "EDIT", "", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 0, 0, 10, 10, ID_H89, m);
+    /* FujiNet */
+    g_fuji_title = ctl(g_page[5], "STATIC", "FujiBus packets (SLIP-decoded)", SS_NOPREFIX, 0, 0, 10, 10, 0, f);
+    g_fuji_note = ctl(g_page[5], "STATIC", "", SS_NOPREFIX | SS_ENDELLIPSIS, 0, 0, 10, 10, 0, f);
+    ctl(g_page[5], "BUTTON", "Clear", 0, 0, 0, 10, 10, ID_FUJI_CLEAR, f);
+    g_fuji_text = ctl(g_page[5], "EDIT", "", ES_MULTILINE | ES_READONLY | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL,
+                      0, 0, 10, 10, ID_FUJI_TEXT, m);
+    SendMessageA(g_fuji_text, EM_SETLIMITTEXT, 0, 0);
+    g_state_title = ctl(g_page[5], "STATIC", "FujiNet card (82C55)", SS_NOPREFIX, 0, 0, 10, 10, 0, f);
+    g_fuji_state = ctl(g_page[5], "EDIT", "", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 0, 0, 10, 10, ID_FUJI_STATE, m);
 
     {
         const char *tab = getenv("H89_DEBUGGER_TAB");
-        static const char *const keys[NTABS] = { "prompt", "cpu", "disassembly", "breakpoints", "h89" };
+        static const char *const keys[NTABS] = { "prompt", "cpu", "disassembly", "breakpoints", "h89", "fujinet" };
         int first = 0;
         for (int i = 0; tab && i < NTABS; i++)
             if (!_stricmp(tab, keys[i]))

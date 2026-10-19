@@ -6,9 +6,12 @@
  * Tabs: the Prompt (the engine's commands, Tab completion, a history), the
  * CPU and memory (every register editable in any radix, the flags, a dump),
  * the disassembly (double-click a line for a breakpoint, the wheel browses),
- * breakpoints, and the H89's parts as the engine reports them. F5 run/stop,
- * F7 step, F8 over, Shift+F8 out, F12 close. Showing it attaches the engine
- * (which stops the machine); closing it detaches, and the machine runs on.
+ * breakpoints, the H89's parts as the engine reports them, and FujiNet (the
+ * FujiBus packets on the card, both ways, beside the card's state). F5
+ * run/stop, F7 step, F8 over, Shift+F8 out, F12 close. Showing it attaches
+ * the engine (which stops the machine); closing it detaches, and the
+ * machine runs on. The FujiNet trace runs from the session's start, so its
+ * tab shows what happened before the window opened.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -31,8 +34,10 @@
 #define NREGS 17
 #define NFLAGS 6
 #define MAX_BPS 128
-#define NTABS 5
+#define NTABS 6
 #define TAB_PROMPT 0
+#define TAB_FUJINET 5
+#define TRACE_MAX 512
 #define NSAVES 3
 
 static const struct { const char *name; int reg; int wide; } kRegs[NREGS] = {
@@ -60,7 +65,7 @@ static NSString *const kSaveTitles[NSAVES] = {
 static NSString *const kSaveFiles[NSAVES] = { @"disassembly.asm", @"memory.bin", @"h89-state.txt" };
 
 /* The tabs, in order, by the names H89_DEBUGGER_TAB takes. */
-static const char *const kTabNames[NTABS] = { "prompt", "cpu", "disassembly", "breakpoints", "h89" };
+static const char *const kTabNames[NTABS] = { "prompt", "cpu", "disassembly", "breakpoints", "h89", "fujinet" };
 
 /* ---- helpers ------------------------------------------------------------------------ */
 
@@ -152,6 +157,24 @@ static void setTextKeepingPlace(NSTextView *view, NSString *text)
     view.string = text;
     if (scroll)
         [scroll.contentView scrollToPoint:at];
+}
+
+/* Whether a view's reader is at its end (a log then follows new lines). */
+static BOOL atEnd(NSTextView *view)
+{
+    NSScrollView *scroll = view.enclosingScrollView;
+    if (!scroll)
+        return YES;
+    return NSMaxY(scroll.contentView.documentVisibleRect) >= NSHeight(view.frame) - 4;
+}
+
+/* The same where the reader left it, or, following, at its end. */
+static void setTextAt(NSTextView *view, NSString *text, BOOL follow)
+{
+    if (![view.string isEqualToString:text])
+        setTextKeepingPlace(view, text);
+    if (follow)
+        [view scrollRangeToVisible:NSMakeRange(view.string.length, 0)];
 }
 
 static NSStackView *hstack(NSArray<NSView *> *views)
@@ -270,6 +293,11 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
     NSStackView *_bpList;
 
     NSTextView *_h89;
+
+    NSTextView *_fujiText, *_fujiState;
+    NSTextField *_fujiNote;
+    uint64_t _fujiLast;
+    int _fujiCount;
 }
 
 - (instancetype)initWithSession:(h89session *)session
@@ -287,6 +315,7 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
     _dbg = h89session_debugger(session);
     _history = [NSMutableArray array];
     _memBase = 0x2000;
+    _fujiCount = -1;
 
     win.title = @"Debugger";
     win.releasedWhenClosed = NO;
@@ -414,6 +443,8 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
         [self refreshCpu];
         [self refreshMem];
         [self refreshH89];
+        if ([_tabs indexOfTabViewItem:_tabs.selectedTabViewItem] == TAB_FUJINET)
+            [self refreshFujinet:NO];
     }
 }
 
@@ -430,6 +461,13 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
 - (NSTextField *)label:(NSString *)text
 {
     return [NSTextField labelWithString:text];
+}
+
+- (NSTextField *)heading:(NSString *)text
+{
+    NSTextField *l = [NSTextField labelWithString:text];
+    l.font = [NSFont boldSystemFontOfSize:[NSFont systemFontSize]];
+    return l;
 }
 
 - (NSTextField *)hint:(NSString *)text
@@ -697,11 +735,40 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
     return scroll;
 }
 
+/* The packets left, a note and Clear over them; the card's state right. */
+- (NSView *)buildFujinet
+{
+    NSScrollView *fujiScroll, *stateScroll;
+    NSStackView *row, *left, *right, *split;
+
+    _fujiNote = [self hint:@""];
+    [_fujiNote setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
+    row = hstack(@[ _fujiNote, [self button:@"Clear" tip:@"Forget the packets so far" action:@selector(fujiClear:)] ]);
+    row.distribution = NSStackViewDistributionFill;
+    _fujiText = monoView(&fujiScroll, NO);
+    _fujiState = monoView(&stateScroll, YES);
+    left = vstack(@[ [self heading:@"FujiBus packets (SLIP-decoded)"], row, fujiScroll ]);
+    fillWidth(left, row, 0);
+    fillWidth(left, fujiScroll, 0);
+    right = vstack(@[ [self heading:@"FujiNet card (82C55)"], stateScroll ]);
+    fillWidth(right, stateScroll, 0);
+
+    split = hstack(@[ left, right ]);
+    split.distribution = NSStackViewDistributionFill;
+    split.alignment = NSLayoutAttributeTop;
+    split.spacing = 12;
+    [left.widthAnchor constraintGreaterThanOrEqualToConstant:480].active = YES;
+    [right.widthAnchor constraintEqualToConstant:320].active = YES;
+    [left.heightAnchor constraintEqualToAnchor:split.heightAnchor].active = YES;
+    [right.heightAnchor constraintEqualToAnchor:split.heightAnchor].active = YES;
+    return split;
+}
+
 - (void)buildWindow
 {
     NSArray *pages = @[ @[ @"Prompt", [self buildPrompt] ], @[ @"CPU & Memory", [self buildCpu] ],
                         @[ @"Disassembly", [self buildDisasm] ], @[ @"Breakpoints", [self buildBreakpoints] ],
-                        @[ @"H89", [self buildH89] ] ];
+                        @[ @"H89", [self buildH89] ], @[ @"FujiNet", [self buildFujinet] ] ];
     NSView *toolbar = [self buildToolbar];
     NSStackView *root;
     const char *tab;
@@ -755,6 +822,8 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
 {
     if ([tabView indexOfTabViewItem:item] == TAB_PROMPT)
         [self.window makeFirstResponder:_promptIn];
+    if ([tabView indexOfTabViewItem:item] == TAB_FUJINET)
+        [self refreshFujinet:NO];
 }
 
 /* ---- actions ---------------------------------------------------------------------------------- */
@@ -1048,6 +1117,13 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
     [self refreshAll];
 }
 
+- (void)fujiClear:(id)sender
+{
+    (void)sender;
+    h89debug_fujinet_trace_clear(_dbg);
+    [self refreshFujinet:YES];
+}
+
 /* ---- refreshers ------------------------------------------------------------------------------- */
 
 - (void)refreshStatus
@@ -1232,6 +1308,43 @@ static const char *bpTypeName(int type)
     setTextKeepingPlace((NSTextView *)_h89, text);
 }
 
+- (void)refreshFujinet:(BOOL)force
+{
+    static h89_fuji_packet p[TRACE_MAX];
+    static char state[4096];
+    int n = h89debug_fujinet_trace(_dbg, p, TRACE_MAX);
+    const int link = h89session_card_link(_session);
+    NSMutableString *t;
+    BOOL follow;
+
+    if (n < 0)
+        n = 0;
+    if (!h89session_fujinet_running(_session) && link != 2)
+        _fujiNote.stringValue = @"FujiNet is off (Preferences ▸ FujiNet).";
+    else
+        _fujiNote.stringValue = link < 0 ? @"No FujiNet card" : textFrom(h89session_card_link_text(link));
+    state[0] = '\0';
+    h89debug_fujinet_state(_dbg, state, (int)sizeof state);
+    setTextAt(_fujiState, textFrom(state), NO);
+
+    if (!force && n == _fujiCount && (n == 0 || p[n - 1].serial == _fujiLast))
+        return;
+    _fujiCount = n;
+    _fujiLast = n > 0 ? p[n - 1].serial : 0;
+    follow = force || atEnd(_fujiText);
+    t = [NSMutableString string];
+    for (int i = 0; i < n; i++) {
+        [t appendFormat:@"%@%@\n     ", i ? @"\n" : @"", textFrom(p[i].text)];
+        for (int k = 0; k < p[i].nbytes && k < (int)sizeof p[i].data; k++)
+            [t appendFormat:@"%02X ", (unsigned)p[i].data[k]];
+        if (p[i].nbytes > (int)sizeof p[i].data)
+            [t appendString:@"…"];
+    }
+    if (n == 0)
+        [t appendString:@"(no FujiBus packets since the trace was cleared)"];
+    setTextAt(_fujiText, t, follow);
+}
+
 - (void)refreshAll
 {
     [self refreshStatus];
@@ -1240,5 +1353,7 @@ static const char *bpTypeName(int type)
     [self refreshDisasm];
     [self refreshBps];
     [self refreshH89];
+    if ([_tabs indexOfTabViewItem:_tabs.selectedTabViewItem] == TAB_FUJINET)
+        [self refreshFujinet:NO];
 }
 @end

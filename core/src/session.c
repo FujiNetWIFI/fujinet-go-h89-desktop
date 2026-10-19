@@ -251,6 +251,7 @@ int h89session_start(h89session *s, const h89session_start_opts *opts)
             fujinet_wait_for_boip(s, 3000);
     }
 
+    h89debug_fujinet_hook(s);
     if (host_up(s) != 0)
         return -1;
     s->running = 1;

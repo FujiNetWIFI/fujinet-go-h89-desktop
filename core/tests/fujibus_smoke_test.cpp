@@ -6,7 +6,8 @@
  * bus/h89 does it -- portio.c's port_init, a SLIP-framed GET ADAPTER CONFIG
  * byte by byte with the /OBF-/ACK handshake, then the reply byte by byte
  * through IBF. The reply must be an ACK from the FujiNet device with a
- * correct checksum and the adapter configuration behind it.
+ * correct checksum and the adapter configuration behind it, and the
+ * debugger's FujiNet trace must have seen both.
  *
  * No Heath ROMs and no CPU: the steps are the port reads and writes the
  * Z80 code makes. Exits 77 (skipped) when the runtime is not built.
@@ -17,6 +18,7 @@
 
 #include "FujiNetCard.h"
 #include "MachineContext.h"
+#include "h89debug.h"
 #include "session_internal.h"
 #include "test_tmpdir.h"
 #include "test_util.h"
@@ -117,6 +119,7 @@ main()
         return 77;
     }
     CHECK(fujinet_wait_for_boip(s, 5000) == 0);
+    h89debug_fujinet_hook(s);
 
     {
         MachineContext        ctx;
@@ -185,6 +188,19 @@ main()
         }
         FujiNetCard::State st = card.state();
         printf("fujibus_smoke: %llu bytes to FujiNet, %llu back\n", st.bytesToEsp, st.bytesFromEsp);
+
+        // the trace: the request and its reply, SLIP-decoded
+        h89_fuji_packet tr[8];
+        const int       n       = h89debug_fujinet_trace(h89session_debugger(s), tr, 8);
+        bool            request = false, ack = false;
+        for (int i = 0; i < n; ++i)
+        {
+            printf("fujibus_smoke: trace: %s\n", tr[i].text);
+            request = request || (!tr[i].to_host && tr[i].command == CMD_GET_ADAPTER_CONFIG);
+            ack     = ack || (tr[i].to_host && tr[i].command == PACKET_ACK && tr[i].nbytes == (int) reply.size());
+        }
+        CHECK(request);
+        CHECK(ack);
     }
 
     h89session_free(s);

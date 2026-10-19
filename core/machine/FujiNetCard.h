@@ -53,6 +53,8 @@
 #include "ClockUser.h"
 #include "IODevice.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 struct rawpipe;
@@ -92,12 +94,22 @@ class FujiNetCard: public IODevice, public ClockUser
     State state() const;
     Link link() const;
 
+    /// The bytes on the link, for the debugger's FujiNet trace: dir 0 from
+    /// FujiNet as the H89 takes them, 1 the H89's as FujiNet takes them,
+    /// 2 from FujiNet thrown away by a reset. One hook for the process, so
+    /// it outlives the card a power cycle rebuilds.
+    typedef void (*TraceFn)(void* user, int dir, const uint8_t* buf, size_t len);
+    static void setTrace(TraceFn fn, void* user);
+    /// Drops the hook if `user` holds it, once no call to it is running.
+    static void unsetTrace(void* user);
+
   private:
     BYTE status() const;
     BYTE portCPins() const;
     void setPortC(BYTE pc);
     void poll();
     void fillInput();
+    void resetPipe();
 
     bool mode2() const { return (mode_m & 0x40) != 0; }
     bool portBIn() const { return (mode_m & 0x02) != 0; }

@@ -1,9 +1,9 @@
 /*
  * debug.c -- the session's debugger glue: the engine (core/debugger,
- * core/include/h89debug.h) is created when a window first asks for it and
- * lives as long as the session; a power cycle unhooks it from the old
- * machine and hooks the new one (stopping at its first instruction when a
- * window holds it).
+ * core/include/h89debug.h) is created when the session starts (for its
+ * FujiNet trace) or a window first asks for it, and lives as long as the
+ * session; a power cycle unhooks it from the old machine and hooks the new
+ * one (stopping at its first instruction when a window holds it).
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -38,6 +38,15 @@ void h89debug_after_power_cycle(struct h89session *s)
 {
     if (s && s->debugger)
         h89debug_power_up((h89debug *)s->debugger);
+}
+
+/* The FujiNet trace is always on: it is cheap, and it is most useful about
+ * what happened before anyone thought to look. */
+void h89debug_fujinet_hook(struct h89session *s)
+{
+    h89debug *d = h89session_debugger(s);
+    if (d)
+        h89debug_fujinet_install(d);
 }
 
 void h89debug_destroy(struct h89session *s)
