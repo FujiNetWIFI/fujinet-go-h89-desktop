@@ -63,9 +63,8 @@ and a data disk in drive 2 or 3:
   is SEBHC's 2.2.04, rebuilt with MOVCPM17 and SYSGEN, because the
   distribution's 32K system is too small for the programs.
 
-On a real H89 the card does nothing from power-on until a program sets up
-its 82C55 and starts it. `FNON.COM` on the CP/M disks does just that;
-`FNON.ASM` beside it is the source, for CP/M's ASM and LOAD.
+The FujiNet on the card runs from power-on, on a real H89 as in the app;
+each program sets up the card's 82C55A itself.
 
 The data disks hold fujinet-lib's H89 integration tests. The zip's
 `README.txt` lists which program is on which disk and where everything

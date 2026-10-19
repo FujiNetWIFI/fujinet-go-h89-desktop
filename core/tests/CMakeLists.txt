@@ -42,8 +42,9 @@ h89_test(h17_formats_test h17_formats_test.cpp)
 h89_add_test(h17_formats h17_formats_test)
 
 # The FujiNet card's 82C55 against a loopback TCP peer: mode and bit
-# set/reset, the status word, the handshake both ways, ESP32 reset and
-# download mode, back-pressure, the bytes it hands the FujiNet trace.
+# set/reset, the status word, the handshake both ways, the port-B lamps, an
+# ESP32 that neither PC2, a mode word nor RESET touches, back-pressure, the
+# bytes it hands the FujiNet trace.
 h89_test(card_test card_test.cpp)
 h89_add_test(card card_test)
 

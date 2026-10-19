@@ -14,11 +14,10 @@
 
 namespace
 {
-const BYTE PC_DIR = 0x01;   // 245 DIR: 1 = H89 -> ESP32
-const BYTE PC_OE  = 0x02;   // 245 /OE (and the ESP32's IO0 strap)
-const BYTE PC_EN  = 0x04;   // ESP32 EN
+const BYTE PC_DIR = 0x01;   // 245 DIR: 1 = H89 -> ESP32 (IO22)
+const BYTE PC_OE  = 0x02;   // 245 /OE (IO21)
 
-// how often the pipe is serviced while the ESP32 runs: 512 cycles of
+// how often the pipe is serviced: 512 cycles of
 // 2.048 MHz time, a quarter of a millisecond
 const unsigned pollCycles_c = 512;
 // a status read finding nothing services it too, but not more often than this
@@ -73,6 +72,7 @@ FujiNetCard::FujiNetCard(const std::string& host, int port, unsigned ackDelayCyc
         pipe_m = rawpipe_new(host.c_str(), port);
     }
     reset();
+    sincePoll_m = pollCycles_c; // the ESP32 runs from power-on: connect at once
 }
 
 FujiNetCard::~FujiNetCard()
@@ -83,14 +83,12 @@ FujiNetCard::~FujiNetCard()
 void
 FujiNetCard::reset()
 {
-    // /RESET on the 82C55: every port an input, latches clear. The ESP32
-    // is held in reset until software sets the mode and raises EN, but PC2
-    // reads 1 meanwhile: the bus hold pulls it up against EN's divider.
+    // /RESET on the 82C55A: every port an input, latches clear. It does
+    // not reach the ESP32, which keeps running.
     mode_m         = 0x9b;
     portB_m        = 0;
     portC_m        = 0;
     pcLatch_m      = 0;
-    pc2Held_m      = true;
     inte1_m        = false;
     inte2_m        = false;
     obfLow_m       = false;
@@ -98,19 +96,20 @@ FujiNetCard::reset()
     outLatch_m     = 0;
     ibf_m          = false;
     inLatch_m      = 0xff;
-    download_m     = false;
     sincePoll_m    = 0;
     if (pipe_m)
     {
-        resetPipe();
+        dropReply();
     }
 }
 
 void
-FujiNetCard::resetPipe()
+FujiNetCard::dropReply()
 {
-    // what FujiNet sent that the H89 has not taken is lost; the trace shows
-    // it dropped (and, with nothing, that a packet in flight was cut off)
+    // a reply the ESP32 had in flight is lost: R1 holds /OE high until a
+    // program sets the 82C55A up again, and the ESP32 gives it up. The trace
+    // shows it dropped (and, with nothing, that a packet in flight was cut off)
+    rawpipe_poll(pipe_m);
     std::vector<uint8_t> lost;
     uint8_t              b;
     lost.reserve(rawpipe_rx_avail(pipe_m));
@@ -119,7 +118,6 @@ FujiNetCard::resetPipe()
         lost.push_back(b);
     }
     trace(2, lost.data(), lost.size());
-    rawpipe_reset(pipe_m);
 }
 
 BYTE
@@ -138,45 +136,21 @@ FujiNetCard::status() const
 BYTE
 FujiNetCard::portCPins() const
 {
-    // An output reads its latch. An input reads its line: /OBF (PC7), IBF
-    // (PC5), /OE (PC1) and DIR (PC0) through their dividers to ground, so
-    // 0; /ACK (PC6) and /STB (PC4) from the ESP32, and INTR (PC3, not
-    // wired), held at 1; PC2 as the bus hold left it.
-    BYTE hi = pcHighIn() ? 0x50 : (BYTE) (pcLatch_m & 0xf0);
-    BYTE lo = pcLowIn() ? (BYTE) (0x08 | (pc2Held_m ? PC_EN : 0))
-                        : (BYTE) ((pcLatch_m & 0x08) | (portC_m & 0x07));
+    // An output reads its latch. An input reads its line: /ACK (PC6) and
+    // /STB (PC4) from the ESP32, idle at 1; /OBF (PC7), IBF (PC5) and
+    // PC0-PC2 go only to 74LVC245 inputs (and /OE to R1's pull-up), so the
+    // bus hold keeps them at 1; INTR (PC3) drives Q1's base, which holds it
+    // at 0.
+    BYTE hi = pcHighIn() ? 0xf0 : (BYTE) (pcLatch_m & 0xf0);
+    BYTE lo = pcLowIn() ? (BYTE) 0x07 : (BYTE) ((pcLatch_m & 0x08) | (portC_m & 0x07));
     return (BYTE) (hi | lo);
 }
 
 void
 FujiNetCard::setPortC(BYTE pc)
 {
-    BYTE was = portC_m;
-    portC_m  = pc & 0x07;
-
-    bool enWas = (was & PC_EN) != 0;
-    bool enNow = (portC_m & PC_EN) != 0;
-
-    if (enWas && !enNow)
-    {
-        // into reset: whatever the ESP32 had in flight is gone
-        if (pipe_m)
-        {
-            resetPipe();
-        }
-        ibf_m      = false;
-        download_m = false;
-    }
-    else if (!enWas && enNow)
-    {
-        // out of reset; IO0 (PC1, the 245's /OE) low selects the ROM loader
-        download_m = (portC_m & PC_OE) == 0;
-        if (pipe_m)
-        {
-            resetPipe();
-        }
-        sincePoll_m = pollCycles_c; // connect at once
-    }
+    // PC0 and PC1 steer the 245; PC2 goes nowhere
+    portC_m = pc & 0x07;
 }
 
 BYTE
@@ -196,7 +170,7 @@ FujiNetCard::in(BYTE addr)
             return val;
         }
 
-        case 1: // port B: wired to nothing, so the latch or the bus hold
+        case 1: // port B: the lamps' latch, or the bus hold
             return portBIn() ? 0xff : portB_m;
 
         case 2: // port C: the status word
@@ -249,8 +223,7 @@ FujiNetCard::out(BYTE addr, BYTE val)
         case 3:
             if (val & 0x80)
             {
-                // a mode word clears every output latch and both INTEs; the
-                // bus hold no longer wins on PC2 once EN's divider has it
+                // a mode word clears every output latch and both INTEs
                 mode_m    = val;
                 inte1_m   = false;
                 inte2_m   = false;
@@ -258,7 +231,6 @@ FujiNetCard::out(BYTE addr, BYTE val)
                 ibf_m     = false;
                 portB_m   = 0;
                 pcLatch_m = 0;
-                pc2Held_m = false;
                 setPortC(0);
             }
             else
@@ -303,14 +275,6 @@ FujiNetCard::link() const
     {
         return LinkNoRuntime;
     }
-    if (!(portC_m & PC_EN))
-    {
-        return LinkEspReset;
-    }
-    if (download_m)
-    {
-        return LinkEspDownload;
-    }
     return rawpipe_state_of(pipe_m) == RAWPIPE_UP ? LinkUp : LinkWaiting;
 }
 
@@ -318,7 +282,7 @@ void
 FujiNetCard::poll()
 {
     sincePoll_m = 0;
-    if (!pipe_m || !(portC_m & PC_EN) || download_m)
+    if (!pipe_m)
     {
         return;
     }
@@ -331,7 +295,7 @@ FujiNetCard::fillInput()
 {
     // The ESP32 strobes the next byte in once IBF is clear, while the 245
     // points from it to the H89.
-    if (ibf_m || !mode2() || !pipe_m || !(portC_m & PC_EN) || download_m)
+    if (ibf_m || !mode2() || !pipe_m)
     {
         return;
     }
@@ -354,7 +318,7 @@ FujiNetCard::notification(unsigned int cycleCount)
 {
     sincePoll_m += cycleCount;
 
-    if (obfLow_m && (portC_m & PC_EN) && !download_m && pipe_m)
+    if (obfLow_m && pipe_m)
     {
         if (ackCountdown_m > cycleCount)
         {
@@ -406,14 +370,13 @@ FujiNetCard::state() const
     s.status       = status();
     s.outLatch     = outLatch_m;
     s.inLatch      = inLatch_m;
+    s.lamps        = portBIn() ? 0 : (BYTE) ~portB_m;
     s.obfLow       = obfLow_m;
     s.ibf          = ibf_m;
     s.inte1        = inte1_m;
     s.inte2        = inte2_m;
-    s.en           = (portC_m & PC_EN) != 0;
     s.oeLow        = (portC_m & PC_OE) == 0;
     s.dirToEsp     = (portC_m & PC_DIR) != 0;
-    s.download     = download_m;
     s.link         = link();
     s.bytesToEsp   = bytesToEsp_m;
     s.bytesFromEsp = bytesFromEsp_m;

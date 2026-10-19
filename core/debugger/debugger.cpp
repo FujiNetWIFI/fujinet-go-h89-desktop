@@ -1239,14 +1239,19 @@ h89debug_section(h89debug* d, int section, char* dst, int dstsz)
               fmt8(rx, s.mode, a, sizeof a), fmt8(rx, s.portB, c4, sizeof c4),
               fmt8(rx, s.portC, b, sizeof b), fmt8(rx, s.status, c1, sizeof c1),
               fmt8(rx, s.outLatch, c2, sizeof c2), fmt8(rx, s.inLatch, c3, sizeof c3));
-            o("/OBF %s  IBF %d  INTE1 %d INTE2 %d  ESP32 EN %d  245 %s, /OE %s%s\n",
-              s.obfLow ? "low (byte waiting)" : "high", s.ibf, s.inte1, s.inte2, s.en,
-              s.dirToEsp ? "H89->ESP32" : "ESP32->H89", s.oeLow ? "low" : "high",
-              s.download ? "  ESP32 in its ROM loader" : "");
-            static const char* const links[] = {"no FujiNet runtime", "connecting", "connected",
-                                                "idle (ESP32 held in reset)", "ESP32 in its ROM loader"};
+            o("/OBF %s  IBF %d  INTE1 %d INTE2 %d  245 %s, /OE %s\n",
+              s.obfLow ? "low (byte waiting)" : "high", s.ibf, s.inte1, s.inte2,
+              s.dirToEsp ? "H89->ESP32" : "ESP32->H89", s.oeLow ? "low" : "high");
+            char lamps[9];
+            for (int i = 0; i < 8; ++i)
+            {
+                lamps[i] = (s.lamps & (0x80 >> i)) ? '*' : '.';
+            }
+            lamps[8] = 0;
+            o("lamps PB7-PB0 %s\n", lamps);
+            static const char* const links[] = {"no FujiNet runtime", "connecting", "connected"};
             const int lk = (int) s.link;
-            o("link: %s, %u connect(s), %u drop(s)\n", lk >= 0 && lk < 5 ? links[lk] : "?",
+            o("link: %s, %u connect(s), %u drop(s)\n", lk >= 0 && lk < 3 ? links[lk] : "?",
               s.connects, s.drops);
             o("bytes to FujiNet %llu, from FujiNet %llu, dropped %llu, /ACK waits %llu, queued %zu out %zu in\n",
               (unsigned long long) s.bytesToEsp, (unsigned long long) s.bytesFromEsp,

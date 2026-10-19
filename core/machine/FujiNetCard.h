@@ -1,7 +1,8 @@
 /*
- * FujiNetCard -- the H89-ESP32 FujiNet card (schematic v1.28): an 82C55 PPI
- * on the right-side I/O bus at 0xD0-0xD3 (decoded from /SER0 and A2), port A
- * in mode 2 (bidirectional, strobed) through a 74LVC245 to an ESP32.
+ * FujiNetCard -- the H89-ESP32 FujiNet card, Rev 1.1 as reworked for
+ * fujinet-firmware PR #2042: an 82C55A on the right-side I/O bus at
+ * 0xD0-0xD3 (decoded from /SER0 and A2), port A in mode 2 (bidirectional,
+ * strobed) through a 74LVC245 to an ESP32.
  *
  * Registers, as fujinet-lib's bus/h89/portio.c drives them:
  *   0xD0  port A: OUT queues a byte for the ESP32 (/OBF falls, rises again
@@ -10,21 +11,19 @@
  *   0xD2  port C: IN is the mode 2 status word
  *             b7 /OBF  b6 INTE1  b5 IBF  b4 INTE2  b3 INTRA  b2-0 PC2-PC0
  *         OUT sets PC0-PC2, the group B outputs:
- *             PC0  74LVC245 DIR (1 = H89 -> ESP32)
- *             PC1  74LVC245 /OE, and the ESP32's IO0 boot strap
- *             PC2  ESP32 EN (0 holds it in reset)
- *   0xD1  port B: wired to nothing. While a mode word makes it an output it
- *         reads back what was written, which fujinet-lib uses to mark the
- *         chip as set up; as an input it reads FF.
+ *             PC0  74LVC245 DIR (1 = H89 -> ESP32); the ESP32 reads it on IO22
+ *             PC1  74LVC245 /OE; the ESP32 reads it on IO21
+ *             PC2  wired to nothing: the rework leaves JP2 (EN) open
+ *   0xD1  port B: the eight lamps D3-D10, each lit while its bit is 0. While
+ *         a mode word makes it an output it reads back what was written,
+ *         which fujinet-lib uses to mark the chip as set up; as an input it
+ *         reads FF and the lamps are dark.
  *   0xD3  control: bit 7 set = mode word (clears port B, port C, the INTEs,
  *         /OBF and IBF); bit 7 clear = port C bit set/reset, (bit << 1) | value
  *
  * Outside mode 2 port C reads its pins, not the status word, and port A has
- * no handshake. After /RESET every port is an input that the 82C55's bus
- * hold pulls up. PC2 then reads 1 against EN's divider while the ESP32 stays
- * held in reset. After a mode word that leaves PC0-PC3 inputs (Heath CP/M's
- * BIOS sends 83H to 323Q), PC2 reads 0. That matches a real H89: HDOS
- * CONFIG, which trusted PC2, hung after a reset and CP/M CONFIG did not.
+ * no handshake. After /RESET every port is an input that the 82C55A's bus
+ * hold pulls up, and nothing on the card pulls PC0-PC2 down: they read 1.
  * It is not a measurement.
  *
  * The ESP32 side is FujiNet itself, over a raw byte pipe (core/net/rawpipe)
@@ -34,14 +33,14 @@
  * the real card's ESP32 relay does.
  *
  * What the ESP32 does with the handshake, and so what this models:
- *   - it /ACKs a byte the H89 writes a moment later (ackDelay cycles) when
- *     it is running; held in reset (EN low) or in its ROM download mode
- *     (EN rose while PC1 was low) it never does, and the H89 waits;
+ *   - it runs from power-on; nothing the H89 writes starts, stops or
+ *     restarts it, and neither does the H89's RESET;
+ *   - it /ACKs a byte the H89 writes a moment later (ackDelay cycles);
  *   - it strobes the next received byte in once IBF is clear, one byte at
  *     a time, while the 245 points its way (DIR = 0, /OE = 0);
- *   - EN falling is a reset: whatever was in flight is lost (the pipe is
- *     closed, and FujiNet sees the disconnect).
- * INTR is not wired to the H89 on this card, so nothing interrupts.
+ *   - a reply in flight when the H89 resets is lost: R1 holds /OE high
+ *     until a program sets the 82C55A up again, and the ESP32 gives up.
+ * INTR reaches J3 through Q1, and J3 is left open, so nothing interrupts.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -78,14 +77,13 @@ class FujiNetCard: public IODevice, public ClockUser
         LinkNoRuntime = 0,  ///< the pipe has nowhere to go
         LinkWaiting,        ///< not connected (yet); retrying
         LinkUp,             ///< connected
-        LinkEspReset,       ///< the H89 holds the ESP32 in reset
-        LinkEspDownload,    ///< the ESP32 is in its ROM download mode
     };
 
     struct State
     {
         BYTE  mode, portB, portC, status, outLatch, inLatch;
-        bool  obfLow, ibf, inte1, inte2, en, oeLow, dirToEsp, download;
+        BYTE  lamps;  ///< D3-D10, bit n set while PBn's lamp is lit
+        bool  obfLow, ibf, inte1, inte2, oeLow, dirToEsp;
         Link  link;
         unsigned long long bytesToEsp, bytesFromEsp, txDropped, ackWaits;
         size_t rxQueued, txQueued;
@@ -109,7 +107,7 @@ class FujiNetCard: public IODevice, public ClockUser
     void setPortC(BYTE pc);
     void poll();
     void fillInput();
-    void resetPipe();
+    void dropReply();
 
     bool mode2() const { return (mode_m & 0x40) != 0; }
     bool portBIn() const { return (mode_m & 0x02) != 0; }
@@ -123,14 +121,12 @@ class FujiNetCard: public IODevice, public ClockUser
     BYTE      portB_m;     // port B output latch
     BYTE      portC_m;     // PC0-PC2 output latch
     BYTE      pcLatch_m;   // PC3-PC7 output latch, outside mode 2
-    bool      pc2Held_m;   // the bus hold keeps PC2 reading 1 (since /RESET)
     bool      inte1_m, inte2_m;
     bool      obfLow_m;    // a byte waits for the ESP32's /ACK
     unsigned  ackCountdown_m;
     BYTE      outLatch_m;
     bool      ibf_m;
     BYTE      inLatch_m;
-    bool      download_m;
 
     unsigned  sincePoll_m;
 

@@ -285,8 +285,7 @@ const char *h89session_fujinet_webui_url(const h89session *s);
 int         h89session_fujinet_copy_log(h89session *s, char *dst, int max);
 int         h89session_fujinet_restart(h89session *s);
 /* The card's link: -1 no card, else FujiNetCard::Link (0 no runtime,
- * 1 waiting, 2 up, 3 the H89 holds the ESP32 in reset, 4 ESP32 in its ROM
- * loader). */
+ * 1 waiting, 2 up). */
 int         h89session_card_link(h89session *s);
 const char *h89session_card_link_text(int link);
 
