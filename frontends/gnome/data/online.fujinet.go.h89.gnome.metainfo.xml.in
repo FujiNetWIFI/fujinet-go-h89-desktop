@@ -3,7 +3,7 @@
   <id>online.fujinet.go.h89.gnome</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>FujiNet Go H89</name>
+  <name>FujiNet Go H89 (GNOME)</name>
   <summary>A Heathkit H89 with a FujiNet card</summary>
   <description>
     <p>
@@ -32,32 +32,53 @@
     </p>
   </description>
   <launchable type="desktop-id">online.fujinet.go.h89.gnome.desktop</launchable>
+  <icon type="stock">online.fujinet.go.h89.gnome</icon>
+  <!-- Software centres classify from these, not from the .desktop
+       Categories= line; without them the app lands in no section at all. -->
+  <categories>
+    <category>Game</category>
+    <category>Emulator</category>
+  </categories>
   <url type="homepage">https://fujinet.online/</url>
   <url type="bugtracker">https://github.com/tschak909/fujinet-go-h89-desktop/issues</url>
   <url type="vcs-browser">https://github.com/tschak909/fujinet-go-h89-desktop</url>
   <developer id="online.fujinet">
-    <name>Thomas Cherryhomes</name>
+    <name>FujiNet</name>
   </developer>
   <content_rating type="oars-1.1"/>
   <screenshots>
     <screenshot type="default">
-      <caption>HDOS 2.0 running fujinet-lib's FujiNet tests on the H19</caption>
-      <image>https://raw.githubusercontent.com/tschak909/fujinet-go-h89-desktop/main/data/screenshots/1_hdos_fujidev.png</image>
+      <caption>FujiNet CONFIG running under CP/M on the H89, reached through the FujiNet card</caption>
+      <image>https://raw.githubusercontent.com/FujiNetWIFI/fujinet-go-h89-desktop/v0.2.1/data/screenshots/1_config.png</image>
     </screenshot>
     <screenshot>
-      <caption>The debugger in Heath's split octal, with the FujiNet card's 82C55</caption>
-      <image>https://raw.githubusercontent.com/tschak909/fujinet-go-h89-desktop/main/data/screenshots/2_debugger.png</image>
+      <caption>The debugger, with the FujiNet card's 82C55 and the FujiBus traffic</caption>
+      <image>https://raw.githubusercontent.com/FujiNetWIFI/fujinet-go-h89-desktop/v0.2.1/data/screenshots/2_debugger.png</image>
     </screenshot>
     <screenshot>
       <caption>Preferences: the cards in the H89's slots and their drives</caption>
-      <image>https://raw.githubusercontent.com/tschak909/fujinet-go-h89-desktop/main/data/screenshots/3_preferences.png</image>
+      <image>https://raw.githubusercontent.com/FujiNetWIFI/fujinet-go-h89-desktop/v0.2.1/data/screenshots/3_preferences.png</image>
     </screenshot>
   </screenshots>
   <releases>
     <!-- The CURRENT release templates its version from @PROJECT_VERSION@, so
          it cannot disagree with the tree; past releases are literal. The
          release job checks that this first entry is still a template. -->
-    <release version="@PROJECT_VERSION@" date="2026-10-19">
+    <release version="@PROJECT_VERSION@" date="2026-10-27">
+      <description>
+        <p>
+          The FujiNet card is now the V1.1 board as reworked for
+          fujinet-firmware #2042: the FujiNet runs from power-on and a reset
+          clears only the 82C55.
+        </p>
+        <p>
+          The Flatpak builds on the GNOME 51 runtime. The software-centre
+          listing now credits FujiNet as developer, declares the app icon,
+          and shows a full set of screenshots for each frontend.
+        </p>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-10-19">
       <description>
         <p>
           Debugger: a FujiNet tab shows every FujiBus packet between the

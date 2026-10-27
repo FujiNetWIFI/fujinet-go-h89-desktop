@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=FujiNet Go H89
+Name=FujiNet Go H89 (GNOME)
 GenericName=Heathkit H89 Emulator
 Comment=A Heathkit H89 with a FujiNet card
 Exec=fujinet-go-h89-gnome %f

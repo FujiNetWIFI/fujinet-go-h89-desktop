@@ -215,11 +215,11 @@ The version comes from the tree, not the tag: `project(… VERSION …)` sets
 it, and both metainfo files template it. `check-version` stops the release
 if the tag disagrees.
 
-To release 0.2.0:
+To release 0.2.1:
 1. Set the version in `CMakeLists.txt`.
 2. Add a `<release>` entry with its date to both
    `frontends/*/data/*.metainfo.xml.in`.
-3. Commit, then `git tag -a v0.2.0 && git push origin v0.2.0`.
+3. Commit, then `git tag -a v0.2.1 && git push origin v0.2.1`.
 
 Running the workflow by hand (Actions → Release → Run workflow) is a dry
 run. Everything is built and tested and the artifacts are attached to the
