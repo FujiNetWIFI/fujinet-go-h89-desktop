@@ -103,7 +103,7 @@ static void fill_names(NSPopUpButton *p, const char *(*names)(int), const char *
     NSMutableArray<H89Row *> *_rows;
     NSMutableArray<NSView *> *_pages;
     NSTabView *_tabs;
-    NSTextField *_status, *_roms, *_cpnetDir;
+    NSTextField *_status, *_roms, *_cpnetDir, *_externalAddr;
     NSButton *_ok;
     CGFloat _sw501Y;
     int _monitors[16], _nmon;
@@ -429,6 +429,8 @@ static void show_row(H89Row *r, BOOL on)
         if (v < 0 || h89session_get_int(_session, r.key, r.def) == v)
             return;
         h89session_set_int(_session, r.key, v);
+        if (!strcmp(r.key, "fujinet_external"))
+            [_externalAddr setEnabled:v != 0];
         if (r.setkind == S_HOST) {
             _hostChanged = YES;
         } else if (r.setkind == S_VIEW) {
@@ -575,6 +577,29 @@ static void show_row(H89Row *r, BOOL on)
         [alert setAlertStyle:NSAlertStyleWarning];
         [alert beginSheetModalForWindow:[self window] completionHandler:nil];
         return;
+    }
+    if (h89session_get_int(_session, "fujinet_external", 0)) {
+        NSString *addr = [[_externalAddr stringValue]
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        char hostName[64];
+        int port;
+        if (h89session_parse_hostport([addr UTF8String], hostName, sizeof hostName, &port) != 0) {
+            NSAlert *alert = [[NSAlert alloc] init];
+            [alert setMessageText:@"External FujiNet"];
+            [alert setInformativeText:[NSString stringWithFormat:@"\"%@\" is not an address:port. "
+                                                                 @"Example: 127.0.0.1:11512", addr]];
+            [alert setAlertStyle:NSAlertStyleWarning];
+            [alert beginSheetModalForWindow:[self window] completionHandler:nil];
+            return;
+        }
+    }
+    {
+        NSString *addr = [[_externalAddr stringValue]
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (![addr isEqualToString:S(h89session_get_str(_session, "fujinet_external_addr", ""))]) {
+            h89session_set_str(_session, "fujinet_external_addr", [addr UTF8String]);
+            _hostChanged = YES;
+        }
     }
     [self finish:YES];
 }
@@ -768,7 +793,19 @@ static void show_row(H89Row *r, BOOL on)
     [self setCheck:p label:@"Enable FujiNet (applied when Settings closes)" x:16 y:y w:400 key:"enable_fujinet"
                def:1 kind:S_HOST];
     y += 30;
-    [self label:[NSString stringWithFormat:@"Web UI: %@", S(h89session_fujinet_webui_url(_session))]
+    [self setCheck:p label:@"Use external FujiNet (dial another instance)" x:16 y:y w:400
+               key:"fujinet_external" def:0 kind:S_HOST];
+    y += 30;
+    [self label:@"Address:port" page:p x:16 y:y + 3 w:110];
+    _externalAddr = [NSTextField textFieldWithString:S(h89session_get_str(_session, "fujinet_external_addr", ""))];
+    [_externalAddr setPlaceholderString:@"127.0.0.1:11512"];
+    [_externalAddr setFrame:NSMakeRect(126, y, 240, 24)];
+    [_externalAddr setEnabled:h89session_get_int(_session, "fujinet_external", 0) != 0];
+    [p addSubview:_externalAddr];
+    y += 34;
+    [self label:(h89session_fujinet_external(_session)
+                     ? @"Web UI: FujiNet is external"
+                     : [NSString stringWithFormat:@"Web UI: %@", S(h89session_fujinet_webui_url(_session))])
            page:p x:16 y:y w:400];
     btn = [NSButton buttonWithTitle:@"Open" target:self action:@selector(openWebUI:)];
     [btn setFrame:NSMakeRect(420, y - 3, 80, 28)];

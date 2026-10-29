@@ -88,3 +88,22 @@ if(WIN32)
 endif()
 add_test(NAME fujibus_smoke COMMAND fujibus_smoke_test)
 set_tests_properties(fujibus_smoke PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120 RUN_SERIAL TRUE)
+
+# The external-FujiNet address field (pure), and "Use external FujiNet"
+# through a session: no runtime of its own, and the card dials a stand-in
+# listener on a spare port (core/tests/hostport_test.c, external_test.c). The
+# second is 77 without the ROMs.
+foreach(_name hostport external)
+  add_executable(${_name}_test tests/${_name}_test.c)
+  target_link_libraries(${_name}_test PRIVATE h89_session)
+  target_include_directories(${_name}_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+  target_compile_definitions(${_name}_test PRIVATE _GNU_SOURCE _DEFAULT_SOURCE
+    H89_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+  set_target_properties(${_name}_test PROPERTIES C_STANDARD 11)
+  if(WIN32)
+    target_link_options(${_name}_test PRIVATE -static)
+  endif()
+  add_test(NAME ${_name} COMMAND ${_name}_test)
+  set_tests_properties(${_name} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+endforeach()

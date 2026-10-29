@@ -1319,8 +1319,11 @@ static const char *bpTypeName(int type)
 
     if (n < 0)
         n = 0;
-    if (!h89session_fujinet_running(_session) && link != 2)
+    if (!h89session_fujinet_running(_session) && !h89session_fujinet_external(_session) && link != 2)
         _fujiNote.stringValue = @"FujiNet is off (Preferences ▸ FujiNet).";
+    else if (h89session_fujinet_external(_session))
+        _fujiNote.stringValue = [NSString stringWithFormat:@"External %s: %@", h89session_boip_endpoint(_session),
+                                 link < 0 ? @"No FujiNet card" : textFrom(h89session_card_link_text(link))];
     else
         _fujiNote.stringValue = link < 0 ? @"No FujiNet card" : textFrom(h89session_card_link_text(link));
     state[0] = '\0';

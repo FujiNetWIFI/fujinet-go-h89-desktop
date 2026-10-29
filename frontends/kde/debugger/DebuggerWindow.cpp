@@ -732,8 +732,13 @@ void Window::refreshFujinet(bool force)
     static char state[4096];
     const int n = h89debug_fujinet_trace(m_dbg, p, kTraceMax);
     const int link = h89session_card_link(m_session);
-    if (!h89session_fujinet_running(m_session) && link != 2)
+    if (!h89session_fujinet_running(m_session) && !h89session_fujinet_external(m_session) && link != 2)
         m_fujiNote->setText(QStringLiteral("FujiNet is off (Preferences ▸ FujiNet)."));
+    else if (h89session_fujinet_external(m_session))
+        m_fujiNote->setText(QStringLiteral("External %1: %2")
+                                .arg(QString::fromUtf8(h89session_boip_endpoint(m_session)))
+                                .arg(link < 0 ? QStringLiteral("No FujiNet card")
+                                              : QString::fromUtf8(h89session_card_link_text(link))));
     else
         m_fujiNote->setText(link < 0 ? QStringLiteral("No FujiNet card")
                                      : QString::fromUtf8(h89session_card_link_text(link)));

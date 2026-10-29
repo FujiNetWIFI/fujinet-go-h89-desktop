@@ -30,6 +30,10 @@
 #define ID_IMPORT 4003
 #define ID_CPNET_DIR 4004
 #define ID_WEBUI 4005
+#define ID_EXT_ADDR 4006
+#ifndef EM_SETCUEBANNER
+#define EM_SETCUEBANNER 0x1501
+#endif
 #define WM_REBUILD_SW501 (WM_APP + 20)
 
 enum { K_COMBO, K_BIT, K_FLAG, K_NUMBER, K_SET_COMBO, K_SET_CHECK, K_MONITOR, K_BAUD, K_SW501 };
@@ -55,7 +59,7 @@ static int g_host_changed;
 static Binding g_rows[MAX_ROWS];
 static int g_nrows;
 static int g_monitors[16], g_nmon;
-static HWND g_cpnet_dir;
+static HWND g_cpnet_dir, g_ext_addr;
 static int g_sw501_y;
 static int g_syncing;
 
@@ -366,6 +370,8 @@ static void on_row(Binding *b, int notify)
         if (v < 0 || h89session_get_int(g_session, b->key, b->def) == v)
             return;
         h89session_set_int(g_session, b->key, v);
+        if (!strcmp(b->key, "fujinet_external") && g_ext_addr)
+            EnableWindow(g_ext_addr, v != 0);
         if (b->setkind == S_HOST)
             g_host_changed = 1;
         else if (b->setkind == S_VIEW) {
@@ -400,6 +406,7 @@ static void finish(int accepted)
     }
     h89session_settings_flush(g_session);
     g_win = NULL;
+    g_ext_addr = NULL;
     EnableWindow(g_hwnd, TRUE);
     DestroyWindow(w);
     SetForegroundWindow(g_hwnd);
@@ -445,7 +452,9 @@ static LRESULT CALLBACK page_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
         if (id == ID_WEBUI) {
-            if (h89session_fujinet_running(g_session))
+            if (h89session_fujinet_external(g_session))
+                MessageBoxA(g_win, "FujiNet is external: use its own web UI.", "FujiNet", MB_ICONINFORMATION | MB_OK);
+            else if (h89session_fujinet_running(g_session))
                 ShellExecuteA(g_win, "open", h89session_fujinet_webui_url(g_session), NULL, NULL, SW_SHOWNORMAL);
             return 0;
         }
@@ -481,6 +490,28 @@ static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (!h89_config_validate(&g_cfg, why, sizeof why)) {
                 MessageBoxA(hwnd, why, "This Machine Cannot Be Built", MB_ICONWARNING | MB_OK);
                 return 0;
+            }
+            if (g_ext_addr) {
+                char addr[96], hostName[64], *start = addr, *end;
+                int port;
+                GetWindowTextA(g_ext_addr, addr, sizeof addr);
+                while (*start == ' ' || *start == '\t')
+                    start++;
+                memmove(addr, start, strlen(start) + 1);
+                end = addr + strlen(addr);
+                while (end > addr && (end[-1] == ' ' || end[-1] == '\t'))
+                    *--end = '\0';
+                if (h89session_get_int(g_session, "fujinet_external", 0) &&
+                    h89session_parse_hostport(addr, hostName, sizeof hostName, &port) != 0) {
+                    MessageBoxA(hwnd, "That is not an address:port.\n\nExample: 127.0.0.1:11512",
+                                "External FujiNet", MB_ICONWARNING | MB_OK);
+                    SetFocus(g_ext_addr);
+                    return 0;
+                }
+                if (strcmp(h89session_get_str(g_session, "fujinet_external_addr", ""), addr) != 0) {
+                    h89session_set_str(g_session, "fujinet_external_addr", addr);
+                    g_host_changed = 1;
+                }
             }
             finish(1);
             return 0;
@@ -648,7 +679,19 @@ static void build_fujinet(HWND p)
     int y = 12;
     set_check(p, "Enable FujiNet (applied when Settings closes)", 16, y, 400, "enable_fujinet", 1, S_HOST);
     y += 30;
-    snprintf(url, sizeof url, "Web UI: %s", h89session_fujinet_webui_url(g_session));
+    set_check(p, "Use external FujiNet (dial another instance)", 16, y, 400, "fujinet_external", 0, S_HOST);
+    y += 30;
+    mk_label(p, "Address:port", 16, y, 110);
+    g_ext_addr = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", h89session_get_str(g_session, "fujinet_external_addr", ""),
+                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, h89w_px(126), h89w_px(y),
+                                 h89w_px(240), h89w_px(22), p, (HMENU)(INT_PTR)ID_EXT_ADDR, NULL, NULL);
+    h89w_set_font(g_ext_addr, h89w_font());
+    SendMessageA(g_ext_addr, EM_SETCUEBANNER, FALSE, (LPARAM)L"127.0.0.1:11512");
+    EnableWindow(g_ext_addr, h89session_get_int(g_session, "fujinet_external", 0) != 0);
+    y += 34;
+    snprintf(url, sizeof url, "Web UI: %s", h89session_fujinet_external(g_session)
+                                                ? "FujiNet is external"
+                                                : h89session_fujinet_webui_url(g_session));
     mk_label(p, url, 16, y, 400);
     btn = CreateWindowA("BUTTON", "Open", WS_CHILD | WS_VISIBLE | WS_TABSTOP, h89w_px(420), h89w_px(y), h89w_px(80),
                        h89w_px(26), p, (HMENU)ID_WEBUI,

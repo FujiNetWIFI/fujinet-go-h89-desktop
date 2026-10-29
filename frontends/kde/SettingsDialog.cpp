@@ -21,6 +21,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
@@ -446,9 +447,23 @@ int SettingsDialog::run(QWidget *parent, h89session *session, std::function<void
     auto *fn = new QGroupBox(QStringLiteral("FujiNet: it runs inside the app; the H89's card talks to it"));
     auto *fnf = new QFormLayout(fn);
     fnf->addRow(setBox("Enable FujiNet (applied when Preferences closes)", "enable_fujinet", 1, true, false));
-    auto *webui = new QPushButton(QString::fromUtf8(h89session_fujinet_webui_url(session)));
+    QCheckBox *external = setBox("Use external FujiNet (dial another instance; applied when Preferences closes)",
+                                 "fujinet_external", 0, true, false);
+    fnf->addRow(external);
+    auto *externalAddr = new QLineEdit(QString::fromUtf8(h89session_get_str(session, "fujinet_external_addr", "")));
+    externalAddr->setPlaceholderText(QStringLiteral("127.0.0.1:11512"));
+    externalAddr->setToolTip(QStringLiteral("Start the other FujiNet listening here (its [BOIP] port)"));
+    externalAddr->setEnabled(external->isChecked());
+    QObject::connect(external, &QCheckBox::toggled, externalAddr, &QWidget::setEnabled);
+    fnf->addRow(QStringLiteral("Address:port"), externalAddr);
+    auto *webui = new QPushButton(h89session_fujinet_external(session)
+                                      ? QStringLiteral("FujiNet is external")
+                                      : QString::fromUtf8(h89session_fujinet_webui_url(session)));
     QObject::connect(webui, &QPushButton::clicked, &dlg, [&] {
-        if (!h89session_fujinet_running(session))
+        if (h89session_fujinet_external(session))
+            QMessageBox::information(&dlg, QStringLiteral("FujiNet"),
+                                     QStringLiteral("FujiNet is external: use its own web UI"));
+        else if (!h89session_fujinet_running(session))
             QMessageBox::information(&dlg, QStringLiteral("FujiNet"), QStringLiteral("FujiNet is not running"));
         else
             fujinet_config_show(&dlg, session);
@@ -489,7 +504,26 @@ int SettingsDialog::run(QWidget *parent, h89session *session, std::function<void
     changed();
     rebuildSw501();
 
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, [&] {
+        char hostName[64];
+        int port;
+        const QByteArray addr = externalAddr->text().trimmed().toUtf8();
+        if (external->isChecked() &&
+            h89session_parse_hostport(addr.constData(), hostName, sizeof hostName, &port) != 0) {
+            QMessageBox::warning(&dlg, QStringLiteral("External FujiNet"),
+                                 QStringLiteral("\"%1\" is not an address:port. Example: 127.0.0.1:11512")
+                                     .arg(externalAddr->text()));
+            tabs->setCurrentIndex(5);
+            externalAddr->setFocus();
+            return;
+        }
+        if (QString::fromUtf8(h89session_get_str(session, "fujinet_external_addr", "")) !=
+            QString::fromUtf8(addr)) {
+            h89session_set_str(session, "fujinet_external_addr", addr.constData());
+            hostChanged = true;
+        }
+        dlg.accept();
+    });
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     {
         const QString pg = qEnvironmentVariable("H89_PREFS_PAGE");

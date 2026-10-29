@@ -96,11 +96,16 @@ void h89session_running_config(h89session *s, h89_config *cfg);
 /* ---- lifecycle ------------------------------------------------------------ */
 typedef struct {
     int enable_fujinet;       /* start the in-process FujiNet runtime */
+    int external_fujinet;     /* 1: don't start it; the card dials the
+                               * FujiNet at fujinet_addr instead */
+    const char *fujinet_addr; /* "host:port" or "port" (external only);
+                               * NULL/"" = 127.0.0.1:11512 */
     int enable_audio;         /* open the SDL audio device for the beeps */
     int paused;               /* build the machine stopped (the debugger) */
 } h89session_start_opts;
 
-/* Fills opts from the settings (keys: enable_fujinet, enable_audio). */
+/* Fills opts from the settings (keys: enable_fujinet, fujinet_external,
+ * fujinet_external_addr, enable_audio). */
 void h89session_default_opts(h89session *s, h89session_start_opts *opts);
 
 /* Starts FujiNet (if enabled), then the machine, then puts back the disks
@@ -280,7 +285,19 @@ int  h89session_new_blank_disk(h89session *s, const char *path, int kind, int si
 const char *h89session_disks_path(const h89session *s);
 
 /* ---- FujiNet ----------------------------------------------------------------- */
+/* Parses the "Use external FujiNet" address field: "host:port" (host a name
+ * or an IPv4 literal) or a bare "port". Empty text means the default,
+ * 127.0.0.1:11512. Returns 0 and fills host/port, or -1 when the text is not
+ * an address:port (nothing is written then). */
+int         h89session_parse_hostport(const char *text, char *host, int hostsz,
+                                      int *port);
 int         h89session_fujinet_running(const h89session *s);
+/* 1 when the session was started to dial another FujiNet instead of running
+ * its own. */
+int         h89session_fujinet_external(const h89session *s);
+/* "host:port" the card dials (the running session's, or the default
+ * 127.0.0.1:11512 before the first start). */
+const char *h89session_boip_endpoint(const h89session *s);
 const char *h89session_fujinet_webui_url(const h89session *s);
 int         h89session_fujinet_copy_log(h89session *s, char *dst, int max);
 int         h89session_fujinet_restart(h89session *s);

@@ -337,9 +337,14 @@ static void refresh_fujinet(int force)
     size_t len = 0;
     int n = h89debug_fujinet_trace(g_d, p, TRACE_MAX), follow;
 
-    if (!h89session_fujinet_running(g_s) && link != 2)
+    if (!h89session_fujinet_running(g_s) && !h89session_fujinet_external(g_s) && link != 2)
         set_label(g_fuji_note, "FujiNet is off (Preferences \xe2\x96\xb8 FujiNet).");
-    else
+    else if (h89session_fujinet_external(g_s)) {
+        char note[200];
+        snprintf(note, sizeof note, "External %s: %s", h89session_boip_endpoint(g_s),
+                 link < 0 ? "No FujiNet card" : h89session_card_link_text(link));
+        set_label(g_fuji_note, note);
+    } else
         set_label(g_fuji_note, link < 0 ? "No FujiNet card" : h89session_card_link_text(link));
     state[0] = '\0';
     h89debug_fujinet_state(g_d, state, sizeof state);

@@ -410,8 +410,11 @@ static void refresh_fujinet(DbgWin *w, gboolean force)
     int n = h89debug_fujinet_trace(w->dbg, p, TRACE_MAX), i;
     const int link = h89session_card_link(w->session);
 
-    if (!h89session_fujinet_running(w->session) && link != 2)
+    if (!h89session_fujinet_running(w->session) && !h89session_fujinet_external(w->session) && link != 2)
         g_strlcpy(note, "FujiNet is off (Preferences \xe2\x96\xb8 FujiNet).", sizeof note);
+    else if (h89session_fujinet_external(w->session))
+        g_snprintf(note, sizeof note, "External %s: %s", h89session_boip_endpoint(w->session),
+                   link < 0 ? "No FujiNet card" : h89session_card_link_text(link));
     else
         g_strlcpy(note, link < 0 ? "No FujiNet card" : h89session_card_link_text(link), sizeof note);
     gtk_label_set_text(w->fuji_note, note);

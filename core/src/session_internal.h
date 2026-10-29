@@ -51,6 +51,10 @@ struct h89session {
     char fujinet_runtime_src[H89_PATH_MAX]; /* caller-given pristine tree, or "" */
     char webui_url[64];                 /* http://127.0.0.1:11513/ */
     int  fujinet_running;
+    int  fujinet_external;              /* dialling a FujiNet that isn't ours */
+    char boip_host[64];                 /* where the card dials */
+    int  boip_port;
+    char boip_endpoint[80];             /* "host:port" for display */
 
     /* the running configuration */
     h89session_start_opts opts;

@@ -622,6 +622,8 @@ static NSString *str(const char *s)
         return running;
     if (a == @selector(openWebUI:) || a == @selector(showFujiNetLog:))
         return _session && h89session_fujinet_running(_session);
+    if (a == @selector(restartFujiNet:))
+        return !(_session && h89session_fujinet_external(_session));
     return YES;
 }
 

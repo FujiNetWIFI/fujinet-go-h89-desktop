@@ -795,6 +795,11 @@ static void on_open_webui(GtkButton *b, gpointer user_data)
 {
     PrefsState *st = user_data;
     (void)b;
+    if (h89session_fujinet_external(st->session)) {
+        adw_preferences_dialog_add_toast(ADW_PREFERENCES_DIALOG(st->dialog),
+                                         adw_toast_new("FujiNet is external: use its own web UI"));
+        return;
+    }
     if (!h89session_fujinet_running(st->session)) {
         adw_preferences_dialog_add_toast(ADW_PREFERENCES_DIALOG(st->dialog),
                                          adw_toast_new("FujiNet is not running"));
@@ -803,12 +808,41 @@ static void on_open_webui(GtkButton *b, gpointer user_data)
     h89_fujiconfig_show(GTK_WINDOW(st->window), st->session);
 }
 
+#define EXTERNAL_PLACEHOLDER "127.0.0.1:11512"
+
+/* The address field: valid text (or none, meaning 127.0.0.1:11512) is saved
+ * and marks the session for a restart; anything else is flagged and not
+ * saved. */
+static void on_external_addr(GtkEditable *entry, gpointer user_data)
+{
+    PrefsState *state = user_data;
+    const char *text = gtk_editable_get_text(entry);
+    char host[64];
+    int port;
+
+    if (h89session_parse_hostport(text, host, sizeof host, &port) != 0) {
+        gtk_widget_add_css_class(GTK_WIDGET(entry), "error");
+        return;
+    }
+    gtk_widget_remove_css_class(GTK_WIDGET(entry), "error");
+    if (g_strcmp0(h89session_get_str(state->session, "fujinet_external_addr", ""), text) == 0)
+        return;
+    h89session_set_str(state->session, "fujinet_external_addr", text);
+    state->host_dirty = TRUE;
+}
+
+static void on_external_toggled(GObject *row, GParamSpec *pspec, gpointer user_data)
+{
+    gtk_widget_set_sensitive(GTK_WIDGET(user_data), adw_switch_row_get_active(ADW_SWITCH_ROW(row)));
+    (void)pspec;
+}
+
 static AdwPreferencesPage *fujinet_page(PrefsState *st)
 {
     AdwPreferencesPage *page = ADW_PREFERENCES_PAGE(adw_preferences_page_new());
     AdwPreferencesGroup *g = group("FujiNet",
         "The FujiNet runs inside the app; the H89's card talks to it");
-    GtkWidget *row, *open;
+    GtkWidget *row, *open, *external, *addr;
 
     adw_preferences_page_set_title(page, "FujiNet");
     adw_preferences_page_set_name(page, "fujinet");
@@ -816,7 +850,23 @@ static AdwPreferencesPage *fujinet_page(PrefsState *st)
     adw_preferences_group_add(g, set_switch(st, "Enable FujiNet",
         "Off: the card's link stays down (applied when Preferences closes)",
         "enable_fujinet", 1, SET_HOST));
-    row = info_row("Web UI", h89session_fujinet_webui_url(st->session));
+    external = set_switch(st, "Use external FujiNet",
+        "Skip the built-in FujiNet and dial another instance. Start that instance "
+        "listening on this address (its [BOIP] port).",
+        "fujinet_external", 0, SET_HOST);
+    addr = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(addr),
+                                  "Address:port, e.g. " EXTERNAL_PLACEHOLDER);
+    gtk_editable_set_text(GTK_EDITABLE(addr),
+                          h89session_get_str(st->session, "fujinet_external_addr", ""));
+    g_signal_connect(addr, "changed", G_CALLBACK(on_external_addr), st);
+    gtk_widget_set_sensitive(addr, adw_switch_row_get_active(ADW_SWITCH_ROW(external)));
+    g_signal_connect(external, "notify::active", G_CALLBACK(on_external_toggled), addr);
+    adw_preferences_group_add(g, external);
+    adw_preferences_group_add(g, addr);
+    row = info_row("Web UI", h89session_fujinet_external(st->session)
+                                 ? "FujiNet is external"
+                                 : h89session_fujinet_webui_url(st->session));
     open = gtk_button_new_with_label("Open");
     gtk_widget_set_valign(open, GTK_ALIGN_CENTER);
     g_signal_connect(open, "clicked", G_CALLBACK(on_open_webui), st);

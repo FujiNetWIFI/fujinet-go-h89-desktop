@@ -1036,6 +1036,10 @@ static void action_fujinet_config(GSimpleAction *a, GVariant *p, gpointer user_d
 {
     H89Window *self = user_data;
     (void)a; (void)p;
+    if (h89session_fujinet_external(self->session)) {
+        h89_window_toast(self, "FujiNet is external: use its own web UI");
+        return;
+    }
     if (!h89session_fujinet_running(self->session)) {
         h89_window_toast(self, "FujiNet is not running");
         return;
@@ -1047,6 +1051,10 @@ static void action_fujinet_log(GSimpleAction *a, GVariant *p, gpointer user_data
 {
     H89Window *self = user_data;
     (void)a; (void)p;
+    if (h89session_fujinet_external(self->session)) {
+        h89_window_toast(self, "FujiNet is external: see its own console");
+        return;
+    }
     h89_fujilog_show(GTK_WINDOW(self), self->session);
 }
 
@@ -1054,6 +1062,10 @@ static void action_fujinet_restart(GSimpleAction *a, GVariant *p, gpointer user_
 {
     H89Window *self = user_data;
     (void)a; (void)p;
+    if (h89session_fujinet_external(self->session)) {
+        h89_window_toast(self, "FujiNet is external: restart it where it runs");
+        return;
+    }
     if (h89session_fujinet_restart(self->session) != 0)
         show_message(GTK_WIDGET(self), "Cannot Restart FujiNet",
                      h89session_last_error(self->session));

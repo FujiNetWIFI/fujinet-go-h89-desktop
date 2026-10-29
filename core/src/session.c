@@ -82,6 +82,8 @@ void h89session_default_opts(h89session *s, h89session_start_opts *opts)
 {
     memset(opts, 0, sizeof *opts);
     opts->enable_fujinet = h89session_get_int(s, "enable_fujinet", 1);
+    opts->external_fujinet = h89session_get_int(s, "fujinet_external", 0);
+    opts->fujinet_addr = h89session_get_str(s, "fujinet_external_addr", NULL);
     opts->enable_audio = h89session_get_int(s, "enable_audio", 1);
 }
 
@@ -206,12 +208,14 @@ static int host_up(struct h89session *s)
     o.h17_size = h17_size;
     o.font = font;
     o.font_size = font_size;
-    o.boip_host = "127.0.0.1";
-    /* The card dials FujiNet's BoIP port -- the in-process runtime's, or a
-     * standalone fujinet-pc's when the runtime is switched off. A session
-     * with FujiNet disabled outright (fujinet_lib "", the tests) has a card
-     * with nowhere to dial, so it can never pick up someone else's FujiNet. */
-    o.boip_port = s->fujinet_disabled ? 0 : H89SESSION_BOIP_PORT;
+    /* The card dials FujiNet's BoIP port -- the in-process runtime's, a
+     * standalone fujinet-pc's when the runtime is switched off, or the
+     * external address. A session with FujiNet disabled outright
+     * (fujinet_lib "", the tests) has a card with nowhere to dial, so it
+     * can never pick up someone else's FujiNet; an external address is
+     * asked for by name, so it is dialled regardless. */
+    o.boip_host = s->boip_host;
+    o.boip_port = s->fujinet_disabled && !s->fujinet_external ? 0 : s->boip_port;
     o.sasi_dir = s->sasi_dir;
     o.paused = s->opts.paused;
 
@@ -245,11 +249,31 @@ int h89session_start(h89session *s, const h89session_start_opts *opts)
     s->opts = *opts;
 
     /* FujiNet FIRST: it listens and the card dials in. Failing to start is
-     * NOT fatal (the card redials whenever the link is down). */
-    if (s->opts.enable_fujinet && !s->fujinet_disabled) {
+     * NOT fatal (the card redials whenever the link is down). An external
+     * FujiNet is somebody else's listener: nothing starts here, the card
+     * just dials it. */
+    s->fujinet_external = 0;
+    snprintf(s->boip_host, sizeof s->boip_host, "127.0.0.1");
+    s->boip_port = H89SESSION_BOIP_PORT;
+    snprintf(s->webui_url, sizeof s->webui_url, "http://127.0.0.1:%d/", H89SESSION_WEBUI_PORT);
+    if (s->opts.external_fujinet) {
+        if (h89session_parse_hostport(s->opts.fujinet_addr, s->boip_host, sizeof s->boip_host,
+                                      &s->boip_port) != 0) {
+            session_set_error(s, "\"%s\" is not an address:port for the external FujiNet "
+                              "(example: 127.0.0.1:%d)",
+                              s->opts.fujinet_addr ? s->opts.fujinet_addr : "",
+                              H89SESSION_BOIP_PORT);
+            snprintf(s->boip_host, sizeof s->boip_host, "127.0.0.1");
+            s->boip_port = H89SESSION_BOIP_PORT;
+            return -1;
+        }
+        s->fujinet_external = 1;
+        s->webui_url[0] = '\0';
+    } else if (s->opts.enable_fujinet && !s->fujinet_disabled) {
         if (fujinet_start(s) == 0)
             fujinet_wait_for_boip(s, 3000);
     }
+    snprintf(s->boip_endpoint, sizeof s->boip_endpoint, "%s:%d", s->boip_host, s->boip_port);
 
     h89debug_fujinet_hook(s);
     if (host_up(s) != 0)
@@ -269,6 +293,7 @@ void h89session_stop(h89session *s)
     audio_stop(s);
     h89debug_before_power_cycle(s);
     h89host_stop();          /* writes every disk back first */
+    s->fujinet_external = 0;
     s->running = 0;
 }
 
@@ -452,6 +477,93 @@ const char *h89session_disks_path(const h89session *s)
 
 /* ---- FujiNet --------------------------------------------------------------------- */
 
+/* A host name: letters, digits, '-', '_' and dots, no empty label. All-digit
+ * text must be a dotted IPv4 address (the resolver reads "1.2" as one too). */
+static int host_valid(const char *host)
+{
+    const size_t len = strlen(host);
+    int numeric = 1;
+    size_t pos;
+
+    if (len == 0 || len > 63 || host[0] == '.' || host[0] == '-' || host[len - 1] == '.')
+        return 0;
+    for (pos = 0; pos < len; pos++) {
+        const char chr = host[pos];
+        const int digit = chr >= '0' && chr <= '9';
+        if (!digit && chr != '.')
+            numeric = 0;
+        if (!digit && chr != '.' && chr != '-' && chr != '_' && !(chr >= 'a' && chr <= 'z') &&
+            !(chr >= 'A' && chr <= 'Z'))
+            return 0;
+        if (chr == '.' && host[pos + 1] == '.')
+            return 0;
+    }
+    if (numeric) {
+        int oct[4], used = 0, idx;
+        if (sscanf(host, "%d.%d.%d.%d%n", &oct[0], &oct[1], &oct[2], &oct[3], &used) != 4 ||
+            host[used])
+            return 0;
+        for (idx = 0; idx < 4; idx++)
+            if (oct[idx] < 0 || oct[idx] > 255)
+                return 0;
+    }
+    return 1;
+}
+
+int h89session_parse_hostport(const char *text, char *host, int hostsz, int *port)
+{
+    char buf[80];
+    const char *name = "127.0.0.1";
+    long num = 11512;
+    size_t len;
+
+    if (!text)
+        text = "";
+    while (*text == ' ' || *text == '\t')
+        text++;
+    len = strlen(text);
+    while (len && (text[len - 1] == ' ' || text[len - 1] == '\t' || text[len - 1] == '\n' ||
+                   text[len - 1] == '\r'))
+        len--;
+    if (len >= sizeof buf)
+        return -1;
+    memcpy(buf, text, len);
+    buf[len] = '\0';
+
+    if (len) {
+        char *colon = strrchr(buf, ':');
+        const char *digits = buf;
+        char *end;
+        if (colon) {
+            *colon = '\0';
+            name = buf;
+            digits = colon + 1;
+            if (!host_valid(name))
+                return -1;
+        }
+        if (!*digits)
+            return -1;
+        num = strtol(digits, &end, 10);
+        if (*end || num < 1 || num > 65535)
+            return -1;
+    }
+    if ((int)strlen(name) >= hostsz)
+        return -1;
+    memcpy(host, name, strlen(name) + 1);
+    *port = (int)num;
+    return 0;
+}
+
+int h89session_fujinet_external(const h89session *s)
+{
+    return s->fujinet_external;
+}
+
+const char *h89session_boip_endpoint(const h89session *s)
+{
+    return s->boip_endpoint[0] ? s->boip_endpoint : "127.0.0.1:11512";
+}
+
 int h89session_fujinet_running(const h89session *s)
 {
     return s->fujinet_running;
@@ -464,7 +576,7 @@ const char *h89session_fujinet_webui_url(const h89session *s)
 
 int h89session_fujinet_restart(h89session *s)
 {
-    if (s->fujinet_disabled)
+    if (s->fujinet_disabled || s->fujinet_external)
         return -1;
     fujinet_stop(s);
     if (fujinet_start(s) != 0)

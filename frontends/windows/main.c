@@ -783,6 +783,10 @@ static void show_fujinet_log(HINSTANCE inst)
 {
     static int registered;
     RECT rc;
+    if (h89session_fujinet_external(g_session)) {
+        MessageBoxA(g_hwnd, "FujiNet is external: see its own console.", "FujiNet", MB_ICONINFORMATION | MB_OK);
+        return;
+    }
     if (g_log_window) {
         SetForegroundWindow(g_log_window);
         return;
@@ -991,6 +995,10 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         case IDM_FUJINET_LOG: show_fujinet_log(inst); return 0;
         case IDM_FUJINET_CONFIG:
+            if (h89session_fujinet_external(g_session)) {
+                MessageBoxA(hwnd, "FujiNet is external: use its own web UI.", "FujiNet", MB_ICONINFORMATION | MB_OK);
+                return 0;
+            }
             if (!h89session_fujinet_running(g_session)) {
                 MessageBoxA(hwnd, "FujiNet is not running.", "FujiNet", MB_ICONINFORMATION | MB_OK);
                 return 0;
@@ -998,6 +1006,11 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             ShellExecuteA(hwnd, "open", h89session_fujinet_webui_url(g_session), NULL, NULL, SW_SHOWNORMAL);
             return 0;
         case IDM_FUJINET_RESTART:
+            if (h89session_fujinet_external(g_session)) {
+                MessageBoxA(hwnd, "FujiNet is external: restart it where it runs.", "FujiNet",
+                            MB_ICONINFORMATION | MB_OK);
+                return 0;
+            }
             if (h89session_fujinet_restart(g_session) != 0)
                 MessageBoxA(hwnd, h89session_last_error(g_session), "Cannot Restart FujiNet", MB_ICONWARNING | MB_OK);
             return 0;
