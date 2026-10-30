@@ -64,7 +64,17 @@
     <!-- The CURRENT release templates its version from @PROJECT_VERSION@, so
          it cannot disagree with the tree; past releases are literal. The
          release job checks that this first entry is still a template. -->
-    <release version="@PROJECT_VERSION@" date="2026-10-29">
+    <release version="@PROJECT_VERSION@" date="2026-10-30">
+      <description>
+        <p>
+          The FujiNet card loses its 74LVC245, as in fujinet-firmware #2232: port A of the 82C55 runs straight to the ESP32, and PC0 (DIR) and PC1 (/OE) steer nothing. Programs built with the newest fujinet-lib, which no longer sets them, now reach FujiNet; programs that still set them keep working.
+        </p>
+        <p>
+          The FujiNet disks are built from that fujinet-lib.
+        </p>
+      </description>
+    </release>
+    <release version="0.3.0" date="2026-10-29">
       <description>
         <p>
           New: use an external FujiNet. A switch in Preferences makes the app connect to another FujiNet instance at a host:port you enter (for example 127.0.0.1:11512) instead of starting the built-in one.
