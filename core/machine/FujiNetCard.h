@@ -1,8 +1,8 @@
 /*
  * FujiNetCard -- the H89-ESP32 FujiNet card, Rev 1.1 as reworked for
- * fujinet-firmware PR #2042: an 82C55A on the right-side I/O bus at
- * 0xD0-0xD3 (decoded from /SER0 and A2), port A in mode 2 (bidirectional,
- * strobed) through a 74LVC245 to an ESP32.
+ * fujinet-firmware PR #2042 and without its 74LVC245 (PR #2232): an 82C55A
+ * on the right-side I/O bus at 0xD0-0xD3 (decoded from /SER0 and A2), port A
+ * in mode 2 (bidirectional, strobed) wired straight to an ESP32.
  *
  * Registers, as fujinet-lib's bus/h89/portio.c drives them:
  *   0xD0  port A: OUT queues a byte for the ESP32 (/OBF falls, rises again
@@ -10,10 +10,9 @@
  *         (IBF clears)
  *   0xD2  port C: IN is the mode 2 status word
  *             b7 /OBF  b6 INTE1  b5 IBF  b4 INTE2  b3 INTRA  b2-0 PC2-PC0
- *         OUT sets PC0-PC2, the group B outputs:
- *             PC0  74LVC245 DIR (1 = H89 -> ESP32); the ESP32 reads it on IO22
- *             PC1  74LVC245 /OE; the ESP32 reads it on IO21
- *             PC2  wired to nothing: the rework leaves JP2 (EN) open
+ *         OUT sets PC0-PC2, the group B outputs, which are wired to
+ *         nothing: PC0 and PC1 steered the 74LVC245 (DIR, /OE), and the
+ *         rework leaves JP2 (EN) open on PC2
  *   0xD1  port B: the eight lamps D3-D10, each lit while its bit is 0. While
  *         a mode word makes it an output it reads back what was written,
  *         which fujinet-lib uses to mark the chip as set up; as an input it
@@ -37,9 +36,10 @@
  *     restarts it, and neither does the H89's RESET;
  *   - it /ACKs a byte the H89 writes a moment later (ackDelay cycles);
  *   - it strobes the next received byte in once IBF is clear, one byte at
- *     a time, while the 245 points its way (DIR = 0, /OE = 0);
- *   - a reply in flight when the H89 resets is lost: R1 holds /OE high
- *     until a program sets the 82C55A up again, and the ESP32 gives up.
+ *     a time; the 82C55A drives port A only while the ESP32's /ACK is low,
+ *     so nothing on the H89's side sets the direction;
+ *   - a reply in flight when the H89 resets is lost: the 82C55A has no
+ *     input latch until a program sets it up again, and the ESP32 gives up.
  * INTR reaches J3 through Q1, and J3 is left open, so nothing interrupts.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
@@ -83,9 +83,9 @@ class FujiNetCard: public IODevice, public ClockUser
     {
         BYTE  mode, portB, portC, status, outLatch, inLatch;
         BYTE  lamps;  ///< D3-D10, bit n set while PBn's lamp is lit
-        bool  obfLow, ibf, inte1, inte2, oeLow, dirToEsp;
+        bool  obfLow, ibf, inte1, inte2;
         Link  link;
-        unsigned long long bytesToEsp, bytesFromEsp, txDropped, ackWaits;
+        unsigned long long bytesToEsp, bytesFromEsp, ackWaits;
         size_t rxQueued, txQueued;
         unsigned connects, drops;
     };
@@ -130,7 +130,7 @@ class FujiNetCard: public IODevice, public ClockUser
 
     unsigned  sincePoll_m;
 
-    unsigned long long bytesToEsp_m, bytesFromEsp_m, txDropped_m, ackWaits_m;
+    unsigned long long bytesToEsp_m, bytesFromEsp_m, ackWaits_m;
 };
 
 #endif /* H89_FUJINETCARD_H */
