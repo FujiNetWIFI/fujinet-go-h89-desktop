@@ -164,15 +164,15 @@ main()
     card.reset();
     CHECK_EQ_INT(card.in(0xd2), 0xf7);
 
-    // the book's card_on: one mode word leaves DIR = 0 and /OE = 0, and
-    // port B an output at 00, every lamp lit
+    // the book's card_on: one mode word leaves PC0-PC2 at 0, and port B an
+    // output at 00, every lamp lit
     card.out(0xd3, 0xc0);
     CHECK_EQ_INT(card.in(0xd2), 0x80);
     CHECK_EQ_INT(card.in(0xd1), 0x00);
     CHECK_EQ_INT(card.state().lamps, 0xff);
 
-    // portio.c's port_init() still raises PC2 with /OE and leaves A5H in
-    // port B: PC2 goes nowhere, and the mark reads back (four lamps lit)
+    // an older port_init() raises PC1 and PC2 and leaves A5H in port B:
+    // neither line goes anywhere, and the mark reads back (four lamps lit)
     card.out(0xd2, 0x06);
     CHECK_EQ_INT(card.in(0xd2) & 0x07, 0x06);
     card.out(0xd1, 0xa5);
@@ -180,10 +180,12 @@ main()
     CHECK_EQ_INT(card.state().lamps, 0x5a);
     CHECK(card.link() == FujiNetCard::LinkUp);
 
-    // BSR PC0 = 0, then the H89 -> ESP32 direction with the 245 enabled
+    // an older program still steers the 245 the card no longer has, with
+    // BSR: PC0 = 0, PC1 (/OE) = 0, PC0 (DIR) = 1. The bits read back and
+    // steer nothing
     card.out(0xd3, 0x00);
-    card.out(0xd3, 0x02);   // PC1 (/OE) = 0
-    card.out(0xd3, 0x01);   // PC0 (DIR) = 1
+    card.out(0xd3, 0x02);
+    card.out(0xd3, 0x01);
     CHECK_EQ_INT(card.in(0xd2) & 0x07, 0x05);
 
     // a byte out: /OBF falls, rises when the ESP32 has it; it arrives
@@ -203,8 +205,9 @@ main()
     CHECK(got == std::string(frame, 8));
     CHECK(g_traced[1] == std::string(frame, 8));
 
-    // bytes in: the 245 turned back, IBF rises per byte, port A takes it
-    card.out(0xd3, 0x00);   // DIR = ESP32 -> H89
+    // bytes in, with PC0 turned back as an older program does: IBF rises
+    // per byte, port A takes it
+    card.out(0xd3, 0x00);
     send(g_peer, "XYZ", 3, 0);
     std::string in;
     for (int i = 0; i < 3; ++i)
@@ -216,13 +219,24 @@ main()
     CHECK(g_traced[0] == "XYZ");
     CHECK((card.in(0xd2) & 0x20) == 0);
 
-    // the 245 pointing the wrong way: the ESP32 still acks, nothing arrives
+    // port C steers nothing: with PC0 = 0 a byte written still reaches
+    // FujiNet, and with PC0 = 1 one still comes in
     card.out(0xd0, 'Q');
     CHECK(spin(card, [&] { return (card.in(0xd2) & 0x80) != 0; }));
-    CHECK(card.state().txDropped == 1);
-    card.notification(1024);
-    CHECK(peerRead().empty());
-    CHECK(g_traced[1].size() == 8);
+    std::string out;
+    for (int i = 0; i < 20 && out.empty(); ++i)
+    {
+        card.notification(1024);
+        out += peerRead();
+    }
+    CHECK(out == "Q");
+    CHECK(g_traced[1] == std::string(frame, 8) + "Q");
+    card.out(0xd3, 0x01);   // PC0 = 1
+    send(g_peer, "P", 1, 0);
+    CHECK(spin(card, [&] { return (card.in(0xd2) & 0x20) != 0; }));
+    CHECK_EQ_INT(card.in(0xd0), 'P');
+    CHECK(g_traced[0] == "XYZP");
+    card.out(0xd3, 0x00);   // PC0 = 0
 
     // the INTE bits through bit set/reset
     card.out(0xd3, 0x09);   // PC4 -> INTE2
@@ -243,15 +257,16 @@ main()
     CHECK(!readable(g_peer, 25));
 
     // the H89's RESET reaches only the 82C55A: the ESP32 stays connected,
-    // but a reply it had in flight (here held back by /OE) is lost
-    card.out(0xd3, 0x03);   // PC1 (/OE) = 1
-    send(g_peer, "LOST", 4, 0);
+    // but a reply it had in flight (here held back by its first byte, left
+    // unread in port A) is lost
+    send(g_peer, "XLOST", 5, 0);
     CHECK(spin(card, [&] { return card.state().rxQueued == 4; }));
+    CHECK((card.in(0xd2) & 0x20) != 0);
     card.reset();
     CHECK(card.link() == FujiNetCard::LinkUp);
     CHECK_EQ_INT(card.state().rxQueued, 0);
     CHECK(g_traced[2] == "LOST");
-    CHECK(g_traced[0] == "XYZ");
+    CHECK(g_traced[0] == "XYZPX");
     card.out(0xd3, 0xc0);
     for (int i = 0; i < 20; ++i)
     {

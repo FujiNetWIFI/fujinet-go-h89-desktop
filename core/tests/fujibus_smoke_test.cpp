@@ -72,20 +72,18 @@ spin(FujiNetCard& card, int ms, F done)
     return false;
 }
 
-/// port_putc: point the 245 at the ESP32, write port A, wait out /OBF.
+/// port_putc: write port A, wait out /OBF.
 bool
 putByte(FujiNetCard& card, BYTE b)
 {
-    card.out(0xd3, 0x01);   // PC0 (DIR) = H89 -> ESP32
     card.out(0xd0, b);
     return spin(card, 2000, [&] { return (card.in(0xd2) & 0x80) != 0; });
 }
 
-/// port_getc_timeout: the 245 the other way, wait for IBF, read port A.
+/// port_getc_timeout: wait for IBF, read port A.
 int
 getByte(FujiNetCard& card, int ms)
 {
-    card.out(0xd3, 0x00);   // PC0 (DIR) = ESP32 -> H89
     if (!spin(card, ms, [&] { return (card.in(0xd2) & 0x20) != 0; }))
     {
         return -1;
@@ -126,14 +124,8 @@ main()
         MachineContext::Scope scope(&ctx);
         FujiNetCard           card("127.0.0.1", H89SESSION_BOIP_PORT, 40);
 
-        // portio.c's port_init: mode 2, then PC2 (once the ESP32's EN,
-        // wired to nothing on the reworked card) pulsed with /OE high, then
-        // /OE low
-        card.out(0xd3, 0xc0);
-        card.out(0xd2, 0x06);
-        card.out(0xd2, 0x02);
-        card.out(0xd2, 0x06);
-        card.out(0xd3, 0x02);   // PC1 (/OE) = 0
+        // portio.c's port_init: port A in mode 2, port B an input
+        card.out(0xd3, 0xc2);
         CHECK(spin(card, 5000, [&] { return card.link() == FujiNetCard::LinkUp; }));
 
         // the request: header {device, command, length, checksum, fields}

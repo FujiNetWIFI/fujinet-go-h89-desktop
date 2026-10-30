@@ -14,9 +14,6 @@
 
 namespace
 {
-const BYTE PC_DIR = 0x01;   // 245 DIR: 1 = H89 -> ESP32 (IO22)
-const BYTE PC_OE  = 0x02;   // 245 /OE (IO21)
-
 // how often the pipe is serviced: 512 cycles of
 // 2.048 MHz time, a quarter of a millisecond
 const unsigned pollCycles_c = 512;
@@ -64,7 +61,6 @@ FujiNetCard::FujiNetCard(const std::string& host, int port, unsigned ackDelayCyc
     ackDelay_m(ackDelayCycles ? ackDelayCycles : 1),
     bytesToEsp_m(0),
     bytesFromEsp_m(0),
-    txDropped_m(0),
     ackWaits_m(0)
 {
     if (port > 0)
@@ -106,8 +102,8 @@ FujiNetCard::reset()
 void
 FujiNetCard::dropReply()
 {
-    // a reply the ESP32 had in flight is lost: R1 holds /OE high until a
-    // program sets the 82C55A up again, and the ESP32 gives it up. The trace
+    // a reply the ESP32 had in flight is lost: the 82C55A has no input latch
+    // until a program sets it up again, and the ESP32 gives it up. The trace
     // shows it dropped (and, with nothing, that a packet in flight was cut off)
     rawpipe_poll(pipe_m);
     std::vector<uint8_t> lost;
@@ -137,10 +133,9 @@ BYTE
 FujiNetCard::portCPins() const
 {
     // An output reads its latch. An input reads its line: /ACK (PC6) and
-    // /STB (PC4) from the ESP32, idle at 1; /OBF (PC7), IBF (PC5) and
-    // PC0-PC2 go only to 74LVC245 inputs (and /OE to R1's pull-up), so the
-    // bus hold keeps them at 1; INTR (PC3) drives Q1's base, which holds it
-    // at 0.
+    // /STB (PC4) from the ESP32, idle at 1; nothing drives /OBF (PC7), IBF
+    // (PC5) or PC0-PC2, so the bus hold keeps them at 1; INTR (PC3) drives
+    // Q1's base, which holds it at 0.
     BYTE hi = pcHighIn() ? 0xf0 : (BYTE) (pcLatch_m & 0xf0);
     BYTE lo = pcLowIn() ? (BYTE) 0x07 : (BYTE) ((pcLatch_m & 0x08) | (portC_m & 0x07));
     return (BYTE) (hi | lo);
@@ -149,7 +144,7 @@ FujiNetCard::portCPins() const
 void
 FujiNetCard::setPortC(BYTE pc)
 {
-    // PC0 and PC1 steer the 245; PC2 goes nowhere
+    // PC0-PC2 go nowhere
     portC_m = pc & 0x07;
 }
 
@@ -293,13 +288,8 @@ FujiNetCard::poll()
 void
 FujiNetCard::fillInput()
 {
-    // The ESP32 strobes the next byte in once IBF is clear, while the 245
-    // points from it to the H89.
+    // The ESP32 strobes the next byte in once IBF is clear.
     if (ibf_m || !mode2() || !pipe_m)
-    {
-        return;
-    }
-    if ((portC_m & PC_DIR) || (portC_m & PC_OE))
     {
         return;
     }
@@ -327,25 +317,17 @@ FujiNetCard::notification(unsigned int cycleCount)
         else
         {
             ackCountdown_m = 0;
-            // The ESP32 reads D0-D7 through the 245 as it /ACKs: the byte
-            // only gets there if the 245 points that way.
-            if ((portC_m & PC_DIR) && !(portC_m & PC_OE))
+            // The ESP32 reads D0-D7 as it /ACKs, which makes the 82C55A
+            // drive them
+            if (rawpipe_put(pipe_m, outLatch_m))
             {
-                if (rawpipe_put(pipe_m, outLatch_m))
-                {
-                    ++bytesToEsp_m;
-                    obfLow_m = false;
-                    trace(1, &outLatch_m, 1);
-                }
-                else
-                {
-                    ++ackWaits_m; // FujiNet is not keeping up: hold /OBF
-                }
+                ++bytesToEsp_m;
+                obfLow_m = false;
+                trace(1, &outLatch_m, 1);
             }
             else
             {
-                ++txDropped_m;
-                obfLow_m = false;
+                ++ackWaits_m; // FujiNet is not keeping up: hold /OBF
             }
         }
     }
@@ -375,12 +357,9 @@ FujiNetCard::state() const
     s.ibf          = ibf_m;
     s.inte1        = inte1_m;
     s.inte2        = inte2_m;
-    s.oeLow        = (portC_m & PC_OE) == 0;
-    s.dirToEsp     = (portC_m & PC_DIR) != 0;
     s.link         = link();
     s.bytesToEsp   = bytesToEsp_m;
     s.bytesFromEsp = bytesFromEsp_m;
-    s.txDropped    = txDropped_m;
     s.ackWaits     = ackWaits_m;
     s.rxQueued     = rawpipe_rx_avail(pipe_m);
     s.txQueued     = pipe_m ? RAWPIPE_RING - rawpipe_tx_free(pipe_m) : 0;
