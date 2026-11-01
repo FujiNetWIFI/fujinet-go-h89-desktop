@@ -27,9 +27,14 @@ DisplayWidget::DisplayWidget(h89session *session, QWidget *parent)
 
 void DisplayWidget::tick()
 {
-    /* 0x00RRGGBB is QImage::Format_RGB32 as it is */
-    if (h89session_copy_frame(m_session, reinterpret_cast<uint32_t *>(m_image.bits()), &m_serial))
+    /* The pixels are 0x00RRGGBB; Format_RGB32 needs 0xFFRRGGBB, or KWin
+     * composites the zero alpha as see-through, so force alpha on. */
+    quint32 *px = reinterpret_cast<quint32 *>(m_image.bits());
+    if (h89session_copy_frame(m_session, reinterpret_cast<uint32_t *>(px), &m_serial)) {
+        for (qsizetype i = 0, n = (qsizetype)H89SESSION_FB_WIDTH * H89SESSION_FB_HEIGHT; i < n; i++)
+            px[i] |= 0xFF000000u;
         update();
+    }
 }
 
 void DisplayWidget::setTvAspect(bool tv) { m_tvAspect = tv; update(); }
