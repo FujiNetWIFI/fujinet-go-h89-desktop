@@ -33,6 +33,9 @@ static double now_s(void)
     return ts.tv_sec + ts.tv_nsec / 1e9;
 }
 
+static volatile int g_frames_called;
+static void on_frame(void *ctx) { (void)ctx; g_frames_called++; }
+
 int main(void)
 {
     t_romset rs;
@@ -51,6 +54,7 @@ int main(void)
         return 77;
     }
 
+    h89host_set_frame_callback(on_frame, NULL);
     CHECK(h89host_start(&o) == 0);
     int seen = 0;
     for (int i = 0; i < 200 && !seen; i++)
@@ -70,12 +74,16 @@ int main(void)
     for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++)
         lit += (fb[i] & 0xff) > 0x80;
     CHECK(lit > 50);   /* "H:" is drawn */
+    /* the frame callback fired for it, and the machine's own count runs */
+    CHECK(g_frames_called > 0);
+    CHECK(h89host_frame_count() > 0);
 
     /* the rate over two seconds */
     uint64_t s0 = h89host_slices();
     double t0 = now_s();
     sleep_ms(2000);
     double rate = (h89host_slices() - s0) / (now_s() - t0);
+    h89host_set_frame_callback(NULL, NULL);
     h89host_stop();
     h89host_pacing p;
     h89host_get_pacing(&p);

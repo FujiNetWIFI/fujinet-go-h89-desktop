@@ -1196,6 +1196,27 @@ static void attach_and_refresh(DbgWin *w)
     refresh_all(w);
 }
 
+/* The refresh poll runs only while the window shows. */
+static gboolean tick_refresh(gpointer ud);
+
+static void on_map(GtkWidget *wgt, gpointer ud)
+{
+    DbgWin *w = ud;
+    (void)wgt;
+    if (!w->timer)
+        w->timer = g_timeout_add(100, tick_refresh, w);
+}
+
+static void on_unmap(GtkWidget *wgt, gpointer ud)
+{
+    DbgWin *w = ud;
+    (void)wgt;
+    if (w->timer) {
+        g_source_remove(w->timer);
+        w->timer = 0;
+    }
+}
+
 static void on_destroy(GtkWidget *wgt, gpointer ud)
 {
     DbgWin *w = ud;
@@ -1291,7 +1312,8 @@ void h89_debugger_show(GtkWindow *parent, h89session *session)
     g_signal_connect_after(w->notebook, "switch-page", G_CALLBACK(on_switch_page), w);
 
     g_win = w;
-    w->timer = g_timeout_add(100, tick_refresh, w);
+    g_signal_connect(w->win, "map", G_CALLBACK(on_map), w);
+    g_signal_connect(w->win, "unmap", G_CALLBACK(on_unmap), w);
     gtk_window_present(w->win);
     focus_prompt_if_shown(w);
     if (h89session_is_running(session))

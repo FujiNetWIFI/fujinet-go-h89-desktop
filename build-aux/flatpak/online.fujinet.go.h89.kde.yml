@@ -19,8 +19,8 @@
 #
 # Disks the user picks come in through the document portal, so no
 # --filesystem is needed: the session writes an image back in place when it
-# cannot replace it (core/machine/ImageStore). No --device either: the H89
-# has no game port.
+# cannot replace it (core/machine/ImageStore). --device=dri is for the
+# display only: the H89 has no game port.
 #
 # Build + install + run:
 #   flatpak-builder --user --install --force-clean build-flatpak \
@@ -38,6 +38,7 @@ finish-args:
   - --share=network          # the FujiNet BoIP link + the loopback web UI
   - --socket=wayland
   - --socket=fallback-x11
+  - --device=dri             # the GPU: GSK / QRhi render on it, not in software
   - --socket=pulseaudio      # SDL audio (PipeWire's Pulse interface)
 
 modules:

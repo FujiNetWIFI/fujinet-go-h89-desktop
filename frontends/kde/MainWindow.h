@@ -12,7 +12,7 @@
 
 #include "h89session.h"
 
-class DisplayWidget;
+class DisplayView;
 class H19KeysWindow;
 class QAction;
 class QMenu;
@@ -40,6 +40,7 @@ private:
     void updateStatus();
     void fastTick();
     void applyView();
+    void useSoftwareDisplay();
     void showSettings();
     void restart(bool host);
     void showRomSetup();
@@ -52,7 +53,7 @@ private:
     QString disksFolder() const;
 
     h89session *m_session;
-    DisplayWidget *m_display = nullptr;
+    DisplayView *m_display = nullptr;
     H19KeysWindow *m_keys = nullptr;
     QMenu *m_drives = nullptr;
     QLabel *m_dot = nullptr;

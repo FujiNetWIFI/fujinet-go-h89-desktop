@@ -107,8 +107,6 @@ H19KeysWindow::H19KeysWindow(h89session *session, QWidget *parent)
     outer->addLayout(bottom);
 
     connect(&m_timer, &QTimer::timeout, this, &H19KeysWindow::refreshLights);
-    m_timer.start(250);
-    refreshLights();
 }
 
 void H19KeysWindow::press(int key)
@@ -120,9 +118,25 @@ void H19KeysWindow::press(int key)
         m_shift->setChecked(false);
 }
 
+void H19KeysWindow::showEvent(QShowEvent *e)
+{
+    QWidget::showEvent(e);
+    refreshLights();
+    m_timer.start(250);
+}
+
+void H19KeysWindow::hideEvent(QHideEvent *e)
+{
+    QWidget::hideEvent(e);
+    m_timer.stop();
+}
+
 void H19KeysWindow::refreshLights()
 {
     const unsigned m = h89session_h19_modes(m_session);
+    if (m == m_shownModes)
+        return;
+    m_shownModes = m;
     const QString on = h89AccentColor().name();
     for (int i = 0; i < 8; ++i) {
         const bool lit = (m >> i) & 1;

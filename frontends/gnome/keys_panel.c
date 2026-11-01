@@ -20,6 +20,7 @@ typedef struct {
     GtkWidget *shift;            /* the latching SHIFT */
     GtkWidget *lights[8];
     guint timer;
+    unsigned shown_modes;   /* the lights as last set; ~0 = not yet */
 } Panel;
 
 static Panel *g_panel;
@@ -73,6 +74,9 @@ static gboolean refresh_lights(gpointer user_data)
 {
     Panel *p = user_data;
     unsigned m = h89session_h19_modes(p->session);
+    if (m == p->shown_modes)
+        return G_SOURCE_CONTINUE;
+    p->shown_modes = m;
     for (int i = 0; i < 8; i++) {
         GtkWidget *dot = p->lights[i];
         gboolean on = (m >> i) & 1;
@@ -80,6 +84,27 @@ static gboolean refresh_lights(gpointer user_data)
         gtk_widget_add_css_class(dot, on ? "h89-dot-on" : "h89-dot-off");
     }
     return G_SOURCE_CONTINUE;
+}
+
+/* The lights are polled only while the window shows. */
+static void on_map(GtkWidget *w, gpointer user_data)
+{
+    Panel *p = user_data;
+    (void)w;
+    if (!p->timer) {
+        p->timer = g_timeout_add(250, refresh_lights, p);
+        refresh_lights(p);
+    }
+}
+
+static void on_unmap(GtkWidget *w, gpointer user_data)
+{
+    Panel *p = user_data;
+    (void)w;
+    if (p->timer) {
+        g_source_remove(p->timer);
+        p->timer = 0;
+    }
 }
 
 static gboolean on_panel_key(GtkEventControllerKey *ctrl, guint keyval, guint keycode,
@@ -221,8 +246,9 @@ void h89_keys_panel_toggle(GtkWindow *parent, h89session *session)
     gtk_widget_add_controller(GTK_WIDGET(p->win), keys);
 
     g_signal_connect(p->win, "destroy", G_CALLBACK(on_destroy), p);
-    p->timer = g_timeout_add(250, refresh_lights, p);
-    refresh_lights(p);
+    p->shown_modes = ~0u;
+    g_signal_connect(p->win, "map", G_CALLBACK(on_map), p);
+    g_signal_connect(p->win, "unmap", G_CALLBACK(on_unmap), p);
     g_panel = p;
     gtk_window_present(p->win);
 }

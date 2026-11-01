@@ -354,6 +354,18 @@ int h89session_copy_frame(h89session *s, uint32_t *dst, uint64_t *serial_inout)
     return h89host_frame_copy(dst, serial_inout);
 }
 
+void h89session_set_frame_callback(h89session *s, h89session_frame_cb cb, void *ctx)
+{
+    (void)s;
+    h89host_set_frame_callback(cb, ctx);
+}
+
+uint64_t h89session_frame_count(h89session *s)
+{
+    (void)s;
+    return h89host_frame_count();
+}
+
 void h89session_apply_view(h89session *s)
 {
     h89host_set_view(h89session_get_int(s, "view.phosphor", 0),

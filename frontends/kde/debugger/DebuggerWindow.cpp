@@ -123,6 +123,9 @@ public:
 protected:
     void keyPressEvent(QKeyEvent *e) override;
     void closeEvent(QCloseEvent *e) override;
+    /* the refresh poll runs only while the window shows */
+    void showEvent(QShowEvent *e) override { QWidget::showEvent(e); m_timer.start(100); }
+    void hideEvent(QHideEvent *e) override { QWidget::hideEvent(e); m_timer.stop(); }
     bool eventFilter(QObject *obj, QEvent *ev) override;
 
 private:
@@ -499,7 +502,6 @@ Window::Window(h89session *session, QWidget *parent)
     });
     if (m_tabs->currentIndex() == 0) m_promptIn->setFocus();
     connect(&m_timer, &QTimer::timeout, this, &Window::tick);
-    m_timer.start(100);
 }
 
 bool Window::parse(const QString &text, long *out)

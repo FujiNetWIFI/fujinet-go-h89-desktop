@@ -1,5 +1,12 @@
 /*
- * The H19's screen: a QWidget that pulls frames from the session.
+ * The H19's screen on the GPU: a QRhiWidget that keeps one texture the size
+ * of the frame and draws one textured quad, only when the session has
+ * published a new frame (see FrameFeed) or the bell flash changes. Qt picks
+ * Vulkan, Metal, D3D or OpenGL for it; the scaling, aspect, filtering and
+ * the flash's inversion all happen on the GPU.
+ *
+ * If no GPU device can be had it emits renderFailed() and the main window
+ * swaps in the software SoftDisplayWidget.
  *
  * Copyright (C) 2026 Thomas Cherryhomes
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -7,37 +14,56 @@
 #pragma once
 
 #include <QImage>
-#include <QTimer>
-#include <QWidget>
+#include <QRhiWidget>
 #include <cstdint>
-#include <vector>
+#include <memory>
+#include <rhi/qrhi.h>
 
+#include "DisplayView.h"
+#include "FrameFeed.h"
 #include "h89session.h"
 
-class DisplayWidget : public QWidget {
+class DisplayWidget : public QRhiWidget, public DisplayView {
     Q_OBJECT
 public:
     explicit DisplayWidget(h89session *session, QWidget *parent = nullptr);
-    /* "view.aspect": 0 = the tube's 4:3, 1 = square pixels. */
-    void setTvAspect(bool tv);
-    void setSmooth(bool smooth);
-    /* The visual bell: the picture inverted for a moment. */
-    void flash();
+    ~DisplayWidget() override;
+
+    QWidget *widget() override { return this; }
+    void setTvAspect(bool tv) override;
+    void setSmooth(bool smooth) override;
+    void flash() override;
 
 protected:
-    void paintEvent(QPaintEvent *) override;
+    void initialize(QRhiCommandBuffer *cb) override;
+    void render(QRhiCommandBuffer *cb) override;
+    void releaseResources() override;
+    void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
+    bool eventFilter(QObject *watched, QEvent *e) override;
+    bool event(QEvent *e) override;
     /* Tab is the H19's: it reaches the window's key handler instead of
      * moving the focus. */
     bool focusNextPrevChild(bool) override { return false; }
 
 private:
-    void tick();
+    void onFrame();
+    void updateActive();
 
     h89session *m_session;
-    QImage m_image;
+    FrameFeed *m_feed;
+    QImage m_scratch;          /* FB_WIDTH x FB_HEIGHT, 0x00RRGGBB as the session wrote it */
     uint64_t m_serial = 0;
-    QTimer m_timer;
+    bool m_dirty = false;      /* m_scratch holds a frame not yet uploaded */
     bool m_tvAspect = true;
     bool m_smooth = true;
+    bool m_smoothApplied = true;
     bool m_flash = false;
+
+    QRhi *m_rhi = nullptr;
+    std::unique_ptr<QRhiBuffer> m_ubuf;
+    std::unique_ptr<QRhiTexture> m_tex;
+    std::unique_ptr<QRhiSampler> m_nearest, m_linear;
+    std::unique_ptr<QRhiShaderResourceBindings> m_srb;
+    std::unique_ptr<QRhiGraphicsPipeline> m_pipeline;
 };

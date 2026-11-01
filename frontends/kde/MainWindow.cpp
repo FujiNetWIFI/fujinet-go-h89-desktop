@@ -37,11 +37,13 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "DisplayView.h"
 #include "DisplayWidget.h"
 #include "FujiNetWindows.h"
 #include "H19KeysWindow.h"
 #include "KeyForward.h"
 #include "SettingsDialog.h"
+#include "SoftDisplayWidget.h"
 #include "debugger/DebuggerWindow.h"
 
 static const char *const kH17Filter =
@@ -60,9 +62,13 @@ MainWindow::MainWindow(h89session *session, QWidget *parent)
     resize(1000, 750 + 60);
     setAcceptDrops(true);
 
-    m_display = new DisplayWidget(session, this);
-    setCentralWidget(m_display);
-    m_display->setFocus();
+    auto *gpu = new DisplayWidget(session, this);
+    m_display = gpu;
+    setCentralWidget(gpu);
+    /* No usable GPU device: fall back to painting in software */
+    connect(gpu, &QRhiWidget::renderFailed, this, &MainWindow::useSoftwareDisplay,
+            Qt::QueuedConnection);
+    gpu->setFocus();
 
     m_diskDot = new QLabel(QStringLiteral("●"));
     m_diskDot->setToolTip(QStringLiteral("Drive activity"));
@@ -89,6 +95,17 @@ MainWindow::MainWindow(h89session *session, QWidget *parent)
         QTimer::singleShot(0, this, [this] { DebuggerWindow::showFor(this, m_session); });
     if (qEnvironmentVariableIsSet("H89_OPEN_SETTINGS"))
         QTimer::singleShot(0, this, &MainWindow::showSettings);
+}
+
+void MainWindow::useSoftwareDisplay()
+{
+    if (dynamic_cast<SoftDisplayWidget *>(m_display))
+        return;
+    auto *soft = new SoftDisplayWidget(m_session, this);
+    m_display = soft;
+    setCentralWidget(soft);   /* deletes the GPU display, which stops its feed */
+    applyView();
+    soft->setFocus();
 }
 
 void MainWindow::buildMenus()

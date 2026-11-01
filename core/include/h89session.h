@@ -155,6 +155,17 @@ const char *h89session_roms_path(const h89session *s);
  * H89SESSION_FB_HEIGHT uint32 XRGB8888 pixels) iff its serial differs from
  * *serial_inout, updates it and returns 1; else 0. Pass 0 to force a copy. */
 int  h89session_copy_frame(h89session *s, uint32_t *dst, uint64_t *serial_inout);
+/* Ask to be told when a new frame is ready, for a frontend with no frame
+ * clock of its own: cb(ctx) runs on the machine thread after each published
+ * frame (the H19 publishes only when its screen changed). Keep it quick (post
+ * an event and return) and do not call into the session from it. NULL stops
+ * the calls, and returns only after any call in flight has finished, so ctx
+ * may be freed right after. */
+typedef void (*h89session_frame_cb)(void *ctx);
+void h89session_set_frame_callback(h89session *s, h89session_frame_cb cb, void *ctx);
+/* Batches (16 ms) the machine has run since it started, changed picture or
+ * not: for "is the machine running", not "is the picture changing". */
+uint64_t h89session_frame_count(h89session *s);
 /* Applies the view settings (view.phosphor: 0 white, 1 green, 2 amber;
  * view.scanlines; view.cursor_blink) to the renderer; call after setting
  * them. */

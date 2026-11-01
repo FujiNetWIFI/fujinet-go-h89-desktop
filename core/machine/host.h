@@ -64,6 +64,17 @@ void h89host_reset(void);
  * its serial differs from *serial_inout; returns 1 and updates the serial,
  * else 0. Pass serial 0 to force a copy. */
 int  h89host_frame_copy(uint32_t *dst, uint64_t *serial_inout);
+/* Tells the frontend a new frame is ready: cb(ctx) runs on the machine thread
+ * after each publish (the H19 publishes only when its screen changed, so a
+ * still prompt calls nobody). Keep it quick and do not call into the host
+ * from it. NULL stops the calls and returns only after one in flight has
+ * finished, so ctx may be freed right after. */
+typedef void (*h89host_frame_cb)(void *ctx);
+void h89host_set_frame_callback(h89host_frame_cb cb, void *ctx);
+/* Batches the machine has run since it started, whether or not they changed
+ * the picture: ask it "is the machine running", not "is the picture
+ * changing". */
+uint64_t h89host_frame_count(void);
 /* phosphor: H19Render::Phosphor; takes effect at the next frame. */
 void h89host_set_view(int phosphor, int scanlines, int cursor_blink);
 

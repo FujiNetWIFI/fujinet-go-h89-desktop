@@ -80,6 +80,10 @@ std::condition_variable s_pauseCond;
 std::mutex            s_frameLock;
 std::vector<uint32_t> s_frame(H89HOST_FB_WIDTH * H89HOST_FB_HEIGHT, 0);
 uint64_t              s_frameSerial = 0;
+std::atomic<uint64_t> s_frameCount(0);      // publish attempts, changed or not
+std::mutex            s_cbLock;             // held across a frame callback
+h89host_frame_cb      s_frameCb  = nullptr;
+void*                 s_frameCbCtx = nullptr;
 
 // ---- view settings (any thread -> the machine thread) ----
 std::atomic<int>      s_phosphor(0);
@@ -128,6 +132,7 @@ publish(bool force, uint64_t& lastGen, int& lastPhase, unsigned& lastView)
     int          phase = blink ? (int) ((s_slices.load() / blinkSlices_c) & 1) : 0;
     unsigned     view  = s_viewGen.load();
 
+    s_frameCount.fetch_add(1);
     if (!force && gen == lastGen && phase == lastPhase && view == lastView)
     {
         return;
@@ -142,9 +147,16 @@ publish(bool force, uint64_t& lastGen, int& lastPhase, unsigned& lastView)
     lastView  = view;
 
     s_render.render(term, phase == 0, s_back.data());
-    std::lock_guard<std::mutex> g(s_frameLock);
-    s_frame.swap(s_back);
-    ++s_frameSerial;
+    {
+        std::lock_guard<std::mutex> g(s_frameLock);
+        s_frame.swap(s_back);
+        ++s_frameSerial;
+    }
+    std::lock_guard<std::mutex> cb(s_cbLock);
+    if (s_frameCb)
+    {
+        s_frameCb(s_frameCbCtx);
+    }
 }
 
 bool
@@ -355,6 +367,7 @@ h89host_start(const h89host_opts* opts)
         std::lock_guard<std::mutex> g(s_frameLock);
         s_frameSerial = 0;
     }
+    s_frameCount.store(0);
 
     try
     {
@@ -442,6 +455,20 @@ h89host_frame_copy(uint32_t* dst, uint64_t* serial_inout)
     memcpy(dst, s_frame.data(), s_frame.size() * sizeof(uint32_t));
     *serial_inout = s_frameSerial;
     return 1;
+}
+
+void
+h89host_set_frame_callback(h89host_frame_cb cb, void* ctx)
+{
+    std::lock_guard<std::mutex> g(s_cbLock);
+    s_frameCb    = cb;
+    s_frameCbCtx = ctx;
+}
+
+uint64_t
+h89host_frame_count(void)
+{
+    return s_running.load() ? s_frameCount.load() : 0;
 }
 
 void

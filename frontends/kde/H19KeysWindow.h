@@ -23,6 +23,9 @@ public:
 protected:
     /* typing with this window active still types on the H19 */
     void keyPressEvent(QKeyEvent *e) override;
+    /* the lights are polled only while the window shows */
+    void showEvent(QShowEvent *e) override;
+    void hideEvent(QHideEvent *e) override;
 
 private:
     void press(int key);
@@ -32,4 +35,5 @@ private:
     QToolButton *m_shift = nullptr;
     QLabel *m_lights[8] = {};
     QTimer m_timer;
+    unsigned m_shownModes = ~0u;   /* the lights as last set */
 };

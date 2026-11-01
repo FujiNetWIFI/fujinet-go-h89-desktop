@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <memory>
 
 QColor h89AccentColor()
 {
@@ -48,13 +49,18 @@ void fujinet_log_show(QWidget *parent, h89session *session)
     layout->addWidget(view);
 
     auto *timer = new QTimer(win);
-    auto refresh = [view, session]() {
+    auto refresh = [view, session, shown = std::make_shared<QByteArray>()]() {
         static char buf[128 * 1024];
         const int n = h89session_fujinet_copy_log(session, buf, sizeof(buf));
+        /* setPlainText rebuilds the layout and drops the selection: only
+         * when the log has moved */
+        const QByteArray now = n > 0 ? QByteArray(buf) : QByteArray("(no FujiNet output yet)");
+        if (now == *shown)
+            return;
+        *shown = now;
         const bool atEnd = view->verticalScrollBar()->value() ==
                            view->verticalScrollBar()->maximum();
-        view->setPlainText(n > 0 ? QString::fromUtf8(buf)
-                                 : QStringLiteral("(no FujiNet output yet)"));
+        view->setPlainText(QString::fromUtf8(now));
         if (atEnd)
             view->verticalScrollBar()->setValue(view->verticalScrollBar()->maximum());
     };
