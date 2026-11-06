@@ -28,7 +28,8 @@
 
 find_package(Git QUIET)
 
-# fujinet-firmware master (d7e344822, 2026-11-06).
+# fujinet-firmware master (d7e344822, 2026-11-06): has the 245-less card (#2232)
+# and the BoIP idle-wait fix (#2247).
 # Recorded in three places -- here and in both flatpak manifests
 # (build-aux/flatpak/*.yml).
 set(FUJINET_COMMIT "d7e34482291f08479a91e957635853425592e5c9")

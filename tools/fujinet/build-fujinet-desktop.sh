@@ -303,6 +303,14 @@ def patch(rel, transforms, required=True):
         text = text.replace(old, new, count)
     write_if_changed(p, text)
 
+# MSYS2's newer GCC rejects strncpy(dst, src, strlen(src) + 1) under -Wall -Werror
+# (-Wstringop-truncation) in libnfs's Windows shim, which breaks the Windows build;
+# memcpy copies the same bytes. Skipped once the firmware no longer has that line.
+_inet_pton = clone_dir / "components_pc/libnfs/win32/win32_compat.c"
+if _inet_pton.exists():
+    write_if_changed(_inet_pton, read_file(_inet_pton).replace(
+        "strncpy(srcNonConst, src, strLen);", "memcpy(srcNonConst, src, strLen);"))
+
 # --- build.sh: inject the embedded-build cmake args (getopts rejects any
 # --- pass-through -D flags, so they ride an environment variable) ---------
 patch("build.sh", [
@@ -428,6 +436,19 @@ patch("lib/http/mgHttpClient.cpp", [
 # lib/bus/rs232 have not either, so expect a FRESH set when the Windows build
 # is first attempted -- the other targets' patches will not be the right
 # ones. Add them here, and send them upstream rather than carrying them.
+
+# --- compiler warnings are not fatal in the embedded build ----------------
+patch("fujinet_pc.cmake", [
+    # The firmware builds its bundled libraries (libsmb2, libnfs, ...) with
+    # -Werror, so a newer compiler's new warning in code that is not ours
+    # fails the whole runtime build. Warnings stay, they just are not fatal.
+    (
+        'add_compile_options(-Werror)\n',
+        'if(NOT FUJINET_EMBEDDED)\n'
+        '    add_compile_options(-Werror)\n'
+        'endif()\n',
+    ),
+])
 
 # --- dist target: no ldd DLL harvesting for the embedded Windows build ----
 # The stock Windows "dist" target copies the executable's dependent DLLs by
