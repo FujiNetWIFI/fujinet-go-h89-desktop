@@ -28,14 +28,12 @@
 
 find_package(Git QUIET)
 
-# fujinet-firmware PR head 0c9f00c16 (fork branch boip-idle-wait): master
-# f703133d0 (which contains the old pin 6b8187701) plus the BoIP idle-wait fix
-# (PR #2247; idle wakeups ~1000/s -> ~100/s). Temporary: moves back to master
-# when #2247 merges. The commit is fetched from the fork, hence the fork URL.
+# fujinet-firmware master (d7e344822, 2026-11-06): has the 245-less card (#2232)
+# and the BoIP idle-wait fix (#2247).
 # Recorded in three places -- here and in both flatpak manifests
 # (build-aux/flatpak/*.yml).
-set(FUJINET_COMMIT "0c9f00c16dff62d2b3c6b08821322f50642594db")
-set(FUJINET_URL "https://github.com/tschak909/fujinet-firmware")
+set(FUJINET_COMMIT "d7e34482291f08479a91e957635853425592e5c9")
+set(FUJINET_URL "https://github.com/FujiNetWIFI/fujinet-firmware")
 
 # h89_provide_dependency(NAME <n> PATH <p> SENTINEL <file> OVERRIDE <VAR>
 #                           RESULT <out>

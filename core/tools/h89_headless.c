@@ -12,7 +12,7 @@
  *                      \xHH escapes; newlines are RETURN)
  *   --key NAME         press a special key: f1..f5, erase, blue, red, gray,
  *                      up, down, left, right, home, break, reset, esc,
- *                      backspace, delete, return, tab
+ *                      backspace, delete, return, tab, ctrl-a..ctrl-z
  *   --wait MS          let the machine run MS milliseconds
  *   --screen           print the screen
  *   --ppm FILE         write the H19's picture
@@ -276,6 +276,9 @@ static int key_by_name(const char *n)
     for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
         if (strcmp(n, keys[i].name) == 0)
             return keys[i].code;
+    /* ctrl-a..ctrl-z: the control codes 1..26 */
+    if (strncmp(n, "ctrl-", 5) == 0 && isalpha((unsigned char)n[5]) && n[6] == '\0')
+        return toupper((unsigned char)n[5]) & 0x1F;
     return -1;
 }
 
