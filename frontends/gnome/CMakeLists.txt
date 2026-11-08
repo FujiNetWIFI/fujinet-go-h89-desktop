@@ -35,6 +35,7 @@ add_executable(fujinet-go-h89-gnome
   prefs.c
   fujilog.c
   keys_panel.c
+  help/help_window.c
   debugger/dbg_window.c
 )
 target_link_libraries(fujinet-go-h89-gnome

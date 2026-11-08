@@ -22,6 +22,7 @@ add_executable(fujinet-go-h89-windows WIN32
   prefs.c
   keys_window.c
   debugger/dbg_window.c
+  help/help_window.c
   resource.rc
 )
 target_include_directories(fujinet-go-h89-windows PRIVATE

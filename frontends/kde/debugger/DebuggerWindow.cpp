@@ -36,7 +36,9 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QStringList>
+#include <QShortcut>
 #include <QTabWidget>
+#include "../help/HelpWindow.h"
 #include <QTextBlock>
 #include <QTimer>
 #include <QToolButton>
@@ -253,6 +255,8 @@ Window::Window(h89session *session, QWidget *parent)
     }
     save->setMenu(menu);
     bar->addWidget(save);
+    bar->addWidget(h89HelpButton(QString()));
+    new QShortcut(QKeySequence(Qt::Key_F1), this, [this] { h89HelpFor(this); });
     outer->addLayout(bar);
     m_status = new QLabel;
     outer->addWidget(m_status);
@@ -496,7 +500,15 @@ Window::Window(h89session *session, QWidget *parent)
     }
     /* the Prompt tab is for typing: its input has the keyboard whenever the
      * tab shows (otherwise the toolbar's first button would) */
-    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
+    /* Help's contexts (h89help.h), one per tab */
+    auto setHelpContext = [this](int page) {
+        static const char *const ctx[] = { "debugger/prompt", "debugger/cpu", "debugger/disassembly",
+                                           "debugger/breakpoints", "debugger/h89", "debugger/fujinet" };
+        setProperty("h89HelpContext", QString::fromLatin1(ctx[page >= 0 && page < 6 ? page : 0]));
+    };
+    setHelpContext(m_tabs->currentIndex());
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this, setHelpContext](int index) {
+        setHelpContext(index);
         if (index == 0) m_promptIn->setFocus();
         if (index == kTabFujinet) refreshFujinet(false);
     });

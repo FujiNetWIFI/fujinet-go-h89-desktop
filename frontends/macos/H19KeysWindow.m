@@ -11,6 +11,7 @@
 
 #import "AppDelegate.h"
 #import "KeyForward.h"
+#import "help/HelpWindow.h"
 
 typedef struct {
     int key;
@@ -148,9 +149,16 @@ static const char *const kLightNames[8] = {
         [self key:&kPad[i] frame:NSMakeRect(12 + (i % 3) * 92, y + (i / 3) * 36, 90, 34) in:v];
     for (int i = 0; i < 8; i++)
         _lights[i] = [self label:@"" at:NSMakePoint(310, y + i * 18) width:240 in:v];
+    {
+        NSButton *helpBtn = H89HelpButton(@"keys");
+        [helpBtn setFrameOrigin:NSMakePoint(570, y + 4 * 36 - 34)];
+        [helpBtn setRefusesFirstResponder:YES];
+        [v addSubview:helpBtn];
+    }
     y += 4 * 36 + 12;
 
     NSWindow *w = [self window];
+    H89SetHelpContext(w, @"keys");
     [w setContentSize:NSMakeSize(660, y)];
     v.frame = NSMakeRect(0, 0, 660, y);
     w.contentView = v;

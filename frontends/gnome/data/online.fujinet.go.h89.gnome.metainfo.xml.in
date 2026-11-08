@@ -28,7 +28,7 @@
     <p>
       The Heath ROMs are not included: the application asks for MAME's
       h89 and heath_tlb ROM sets on first start, and recognises them by
-      their contents.
+      their contents. Built-in, searchable Help covers all of it.
     </p>
   </description>
   <launchable type="desktop-id">online.fujinet.go.h89.gnome.desktop</launchable>

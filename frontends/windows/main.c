@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "debugger/dbg_window.h"
+#include "help/help_window.h"
 #include "resource.h"
 #include "win_common.h"
 
@@ -299,6 +300,8 @@ int h89w_import_roms(HWND owner)
     return total;
 }
 
+static int g_rom_setup_open;
+
 static void rom_setup(void)
 {
     char what[512], text[1400];
@@ -311,8 +314,16 @@ static void rom_setup(void)
              "and heath_tlb.zip, or from ROM image files: they are recognised by their contents "
              "and kept in\r\n%s\r\n\r\nStill needed: %s.\r\n\r\nImport them now?",
              h89session_roms_path(g_session), what);
-    if (MessageBoxA(g_hwnd, text, "Import the H89's ROMs", MB_ICONINFORMATION | MB_YESNO) != IDYES)
-        return;
+    /* the box's Help button sends WM_HELP to the window (see wnd_proc) */
+    h89_help_set_context(g_hwnd, "nobios", 0);
+    g_rom_setup_open = 1;
+    {
+        const int answer = MessageBoxA(g_hwnd, text, "Import the H89's ROMs", MB_ICONINFORMATION | MB_YESNO | MB_HELP);
+        g_rom_setup_open = 0;
+        h89_help_set_context(g_hwnd, "main", 0);
+        if (answer != IDYES)
+            return;
+    }
     if (h89w_import_roms(g_hwnd) > 0 && h89session_missing_roms(g_session, what, sizeof what) == 0)
         h89w_start();
     else if (h89session_missing_roms(g_session, what, sizeof what) > 0)
@@ -740,7 +751,8 @@ int h89w_key_message(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 /* ---- the console log ------------------------------------------------------------------------ */
 
-static HWND g_log_window, g_log_edit;
+static HWND g_log_window, g_log_edit, g_log_help;
+#define LOG_BAR 34
 
 static void log_refresh(void)
 {
@@ -762,9 +774,17 @@ static LRESULT CALLBACK log_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         RECT rc;
         GetClientRect(hwnd, &rc);
         if (g_log_edit)
-            MoveWindow(g_log_edit, 0, 0, rc.right, rc.bottom, TRUE);
+            MoveWindow(g_log_edit, 0, LOG_BAR, rc.right, rc.bottom > LOG_BAR ? rc.bottom - LOG_BAR : 0, TRUE);
+        if (g_log_help)
+            MoveWindow(g_log_help, rc.right - 84, 4, 76, LOG_BAR - 8, TRUE);
         return 0;
     }
+    case WM_COMMAND:
+        if (LOWORD(wp) == IDC_LOG_HELP) {
+            h89_help_for(hwnd);
+            return 0;
+        }
+        break;
     case WM_TIMER:
         log_refresh();
         return 0;
@@ -773,7 +793,7 @@ static LRESULT CALLBACK log_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     case WM_DESTROY:
         KillTimer(hwnd, IDT_LOG_REFRESH);
-        g_log_window = g_log_edit = NULL;
+        g_log_window = g_log_edit = g_log_help = NULL;
         return 0;
     }
     return DefWindowProcA(hwnd, msg, wp, lp);
@@ -811,6 +831,11 @@ static void show_fujinet_log(HINSTANCE inst)
                                      ES_AUTOVSCROLL | ES_READONLY,
                                  0, 0, rc.right, rc.bottom, g_log_window, (HMENU)(INT_PTR)IDC_LOG_EDIT, inst, NULL);
     h89w_set_font(g_log_edit, h89w_mono_font());
+    g_log_help = CreateWindowA("BUTTON", "Help", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 10, 10,
+                               g_log_window, (HMENU)(INT_PTR)IDC_LOG_HELP, inst, NULL);
+    h89w_set_font(g_log_help, h89w_font());
+    h89_help_set_context(g_log_window, "fujilog", 1);
+    SendMessageA(g_log_window, WM_SIZE, 0, MAKELPARAM(rc.right, rc.bottom));
     SetTimer(g_log_window, IDT_LOG_REFRESH, 1000, NULL);
     log_refresh();
     ShowWindow(g_log_window, SW_SHOW);
@@ -854,6 +879,8 @@ static void build_menu(HWND hwnd)
     AppendMenuA(fuji, MF_STRING, IDM_FUJINET_LOG, "Console &Log");
     AppendMenuA(fuji, MF_STRING, IDM_FUJINET_RESTART, "&Restart FujiNet");
 
+    AppendMenuA(help, MF_STRING, IDM_HELP, APP_TITLE " &Help\tCtrl+Shift+H");
+    AppendMenuA(help, MF_SEPARATOR, 0, NULL);
     AppendMenuA(help, MF_STRING, IDM_ABOUT, "&About " APP_TITLE);
 
     AppendMenuA(bar, MF_POPUP, (UINT_PTR)machine, "&Machine");
@@ -941,6 +968,13 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_APP + 1:
         rom_setup();
         return 0;
+    case WM_HELP:
+        /* the Help button of the ROM box (F1 is the H19's f1) */
+        if (g_rom_setup_open) {
+            h89_help_show(hwnd, "nobios");
+            return TRUE;
+        }
+        break;
     case WM_COMMAND: {
         const UINT cmd = LOWORD(wp);
         HINSTANCE inst = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
@@ -993,6 +1027,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             h89session_set_int(g_session, "view.smooth", g_smooth ? 0 : 1);
             h89w_apply_view();
             return 0;
+        case IDM_HELP: h89_help_for(hwnd); return 0;
         case IDM_FUJINET_LOG: show_fujinet_log(inst); return 0;
         case IDM_FUJINET_CONFIG:
             if (h89session_fujinet_external(g_session)) {
@@ -1120,6 +1155,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     if (!g_hwnd)
         return 1;
     build_menu(g_hwnd);
+    h89_help_set_context(g_hwnd, "main", 0);
     g_statusbar = CreateWindowExA(0, STATUSCLASSNAMEA, "", WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP, 0, 0, 0, 0,
                                   g_hwnd, (HMENU)(INT_PTR)IDC_STATUSBAR, inst, NULL);
     SendMessageA(g_statusbar, SB_SETPARTS, 3, (LPARAM)parts);
@@ -1157,6 +1193,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     while (GetMessage(&msg, NULL, 0, 0) > 0) {
         /* before TranslateMessage, so the sub-windows' keys reach them
          * whichever child control has the focus */
+        if (h89_help_pretranslate(&msg))
+            continue;
         if (h89_debugger_pretranslate(&msg))
             continue;
         if (h89w_keys_pretranslate(&msg))

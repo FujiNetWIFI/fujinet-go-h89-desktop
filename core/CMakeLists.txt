@@ -34,9 +34,24 @@ set(H89_THIRD_PARTY_SOURCES third_party/puff/puff.c)
 file(GLOB H89_DEBUGGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/debugger/*.c"
   "${CMAKE_CURRENT_SOURCE_DIR}/debugger/*.cpp")
 
+# The Help, embedded: data/help/help.md as topics of styled spans
+# (core/include/h89help.h), which every frontend lays out with its own
+# toolkit. help_data.h declares the table; the build generates it.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(H89_HELP_C "${CMAKE_BINARY_DIR}/generated/help_content.c")
+add_custom_command(
+  OUTPUT "${H89_HELP_C}"
+  COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/tools/help/make-help.py"
+          --src "${CMAKE_SOURCE_DIR}/data/help/help.md"
+          --out-c "${H89_HELP_C}"
+  DEPENDS "${CMAKE_SOURCE_DIR}/tools/help/make-help.py"
+          "${CMAKE_SOURCE_DIR}/data/help/help.md"
+  COMMENT "Help"
+  VERBATIM)
+
 add_library(h89_core STATIC
   ${H89_V89_SOURCES} ${H89_MACHINE_SOURCES} ${H89_NET_SOURCES} ${H89_DEBUGGER_SOURCES}
-  ${H89_THIRD_PARTY_SOURCES})
+  ${H89_THIRD_PARTY_SOURCES} src/help.c "${H89_HELP_C}")
 set_target_properties(h89_core PROPERTIES
   C_STANDARD 11
   CXX_STANDARD 17
@@ -52,7 +67,8 @@ target_include_directories(h89_core SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/v
 target_include_directories(h89_core PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/net"
   "${CMAKE_CURRENT_SOURCE_DIR}/debugger"
-  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/puff")
+  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/puff"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 # getaddrinfo/clock_gettime/nanosleep under a strict -std=c11.
 target_compile_definitions(h89_core PRIVATE _GNU_SOURCE _DEFAULT_SOURCE)

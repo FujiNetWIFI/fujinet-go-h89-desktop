@@ -27,6 +27,7 @@ add_executable(fujinet-go-h89-kde
   SettingsDialog.cpp
   FujiNetWindows.cpp
   H19KeysWindow.cpp
+  help/HelpWindow.cpp
   debugger/DebuggerWindow.cpp
 )
 target_link_libraries(fujinet-go-h89-kde PRIVATE h89_session Qt6::Widgets Qt6::GuiPrivate)

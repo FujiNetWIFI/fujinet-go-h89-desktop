@@ -14,6 +14,7 @@
  */
 
 #include "prefs.h"
+#include "help/help_window.h"
 
 #include "fujilog.h"
 
@@ -445,6 +446,7 @@ static AdwPreferencesPage *machine_page(PrefsState *st)
 
     adw_preferences_page_set_title(page, "Machine");
     adw_preferences_page_set_name(page, "machine");
+    adw_preferences_group_set_header_suffix(machine, h89_help_button("prefs/machine"));
     adw_preferences_page_set_icon_name(page, "computer-symbolic");
 
     st->status_row = info_row("Configuration", NULL);
@@ -504,6 +506,7 @@ static AdwPreferencesPage *slots_page(PrefsState *st)
 
     adw_preferences_page_set_title(page, "Slots & Drives");
     adw_preferences_page_set_name(page, "slots");
+    adw_preferences_group_set_header_suffix(slots, h89_help_button("prefs/slots"));
     adw_preferences_page_set_icon_name(page, "drive-harddisk-symbolic");
 
     for (int i = 0; i < H89_SLOTS; i++)
@@ -638,6 +641,7 @@ static AdwPreferencesPage *switches_page(PrefsState *st)
 
     adw_preferences_page_set_title(page, "Switches");
     adw_preferences_page_set_name(page, "switches");
+    adw_preferences_group_set_header_suffix(sw501, h89_help_button("prefs/switches"));
     adw_preferences_page_set_icon_name(page, "preferences-other-symbolic");
 
     adw_preferences_group_add(auto_g, flag_row(st, "Set the device switches from the slots",
@@ -717,6 +721,7 @@ static AdwPreferencesPage *cpnet_page(PrefsState *st)
 
     adw_preferences_page_set_title(page, "CP/NET");
     adw_preferences_page_set_name(page, "cpnet");
+    adw_preferences_group_set_header_suffix(g, h89_help_button("prefs/cpnet"));
     adw_preferences_page_set_icon_name(page, "folder-remote-symbolic");
     adw_preferences_group_add(g, flag_row(st, "CP/NET device", NULL, &st->cfg.cpnet_enabled));
     st->cpnet_rows[0] = spin_row(st, "Port", "The device's I/O port", &st->cfg.cpnet_port, 0, 255);
@@ -751,6 +756,7 @@ static AdwPreferencesPage *display_page(PrefsState *st)
 
     adw_preferences_page_set_title(page, "Display & Sound");
     adw_preferences_page_set_name(page, "display");
+    adw_preferences_group_set_header_suffix(view, h89_help_button("prefs/display"));
     adw_preferences_page_set_icon_name(page, "video-display-symbolic");
 
     adw_preferences_group_add(view, set_combo(st, "Phosphor", NULL, "view.phosphor", 0,
@@ -846,6 +852,7 @@ static AdwPreferencesPage *fujinet_page(PrefsState *st)
 
     adw_preferences_page_set_title(page, "FujiNet");
     adw_preferences_page_set_name(page, "fujinet");
+    adw_preferences_group_set_header_suffix(g, h89_help_button("prefs/fujinet"));
     adw_preferences_page_set_icon_name(page, "network-wireless-symbolic");
     adw_preferences_group_add(g, set_switch(st, "Enable FujiNet",
         "Off: the card's link stays down (applied when Preferences closes)",

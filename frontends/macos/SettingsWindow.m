@@ -12,6 +12,7 @@
  */
 
 #import "SettingsWindow.h"
+#import "help/HelpWindow.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -617,10 +618,18 @@ static void show_row(H89Row *r, BOOL on)
     return NO;
 }
 
+/* Help's contexts (h89help.h): "prefs/" and the page's key */
+- (void)updateHelpContext
+{
+    NSString *ident = _tabs.selectedTabViewItem.identifier;
+    H89SetHelpContext([self window], [@"prefs/" stringByAppendingString:ident ? ident : @"machine"]);
+}
+
 - (void)tabView:(NSTabView *)tabView didSelectTabViewItem:(NSTabViewItem *)tabViewItem
 {
     (void)tabView;
     (void)tabViewItem;
+    [self updateHelpContext];
     [self changed];
 }
 
@@ -855,9 +864,15 @@ static void show_row(H89Row *r, BOOL on)
     [_ok setKeyEquivalent:@"\r"];
     [_ok setFrame:NSMakeRect(WIN_W - 16 - 100, WIN_H - 44, 100, 30)];
     [content addSubview:_ok];
+    {
+        NSButton *helpBtn = H89HelpButton(nil);
+        [helpBtn setFrameOrigin:NSMakePoint(16, WIN_H - 42)];
+        [content addSubview:helpBtn];
+    }
 
     /* after the tabs are filled, so adding them does not run it */
     [_tabs setDelegate:self];
+    [self updateHelpContext];
 }
 
 - (void)showOnPage:(NSString *)page

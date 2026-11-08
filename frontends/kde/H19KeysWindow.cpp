@@ -15,6 +15,7 @@
 #include <QVBoxLayout>
 
 #include "FujiNetWindows.h"
+#include "help/HelpWindow.h"
 #include "KeyForward.h"
 
 namespace {
@@ -58,6 +59,7 @@ H19KeysWindow::H19KeysWindow(h89session *session, QWidget *parent)
     : QWidget(parent, Qt::Window), m_session(session)
 {
     setWindowTitle(QStringLiteral("H19 Keys"));
+    setProperty("h89HelpContext", QStringLiteral("keys"));
     auto *outer = new QVBoxLayout(this);
 
     auto button = [this](const KeyDef &k) {
@@ -103,6 +105,7 @@ H19KeysWindow::H19KeysWindow(h89session *session, QWidget *parent)
         ml->addWidget(m_lights[i]);
     }
     ml->addStretch(1);
+    ml->addWidget(h89HelpButton(QStringLiteral("keys")));
     bottom->addWidget(modes);
     outer->addLayout(bottom);
 

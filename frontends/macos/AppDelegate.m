@@ -17,6 +17,7 @@
 
 #import "DisplayView.h"
 #import "H19KeysWindow.h"
+#import "help/HelpWindow.h"
 #import "KeyForward.h"
 #import "SettingsWindow.h"
 #import "debugger/DebuggerWindow.h"
@@ -321,6 +322,20 @@ static NSString *str(const char *s)
     [self updateStatus];
 }
 
+- (BOOL)alertShowHelp:(NSAlert *)alert
+{
+    (void)alert;
+    [[H89HelpWindow shared] showAt:@"nobios"];
+    return YES;
+}
+
+/* For the window in front: Settings, the debugger's tab ... */
+- (void)openHelp:(id)sender
+{
+    (void)sender;
+    [[H89HelpWindow shared] showFor:[NSApp keyWindow]];
+}
+
 - (void)romSetup
 {
     if (_askingForRoms) return;
@@ -335,6 +350,8 @@ static NSString *str(const char *s)
          "%@\n\nStill needed: %@.", str(h89session_roms_path(_session)), str(what)];
     [a addButtonWithTitle:@"Import…"];
     [a addButtonWithTitle:@"Not Now"];
+    a.showsHelp = YES;          /* alertShowHelp: opens "nobios" */
+    a.delegate = self;
     const NSModalResponse r = [a runModal];
     _askingForRoms = NO;
     if (r != NSAlertFirstButtonReturn) return;
@@ -565,6 +582,9 @@ static NSString *str(const char *s)
 
     NSMenuItem *helpItem = [[NSMenuItem alloc] init];
     NSMenu *help = [[NSMenu alloc] initWithTitle:@"Help"];
+    /* openHelp:, not showHelp: (AppKit's: "Help isn't available") */
+    [self item:help title:@"FujiNet Go H89 Help" action:@selector(openHelp:) key:@"?"];
+    [help addItem:[NSMenuItem separatorItem]];
     [self item:help title:@"About " APP_TITLE action:@selector(showAbout:) key:@""];
     [helpItem setSubmenu:help];
     [bar addItem:helpItem];
@@ -572,6 +592,8 @@ static NSString *str(const char *s)
     [NSApp setMainMenu:bar];
     [NSApp setWindowsMenu:windows];
     [NSApp setHelpMenu:help];
+    /* the Help menu's search field finds the Help's sections too */
+    [NSApp registerUserInterfaceItemSearchHandler:[H89HelpWindow shared]];
     [self applyView];
 }
 
@@ -935,7 +957,8 @@ static NSString *str(const char *s)
 {
     (void)sender;
     if (!_logWindow) {
-        NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 860, 600)];
+        NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 36, 860, 564)];
+        scroll.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         scroll.hasVerticalScroller = YES;
         scroll.autohidesScrollers = NO;
         _logView = [[NSTextView alloc] initWithFrame:scroll.bounds];
@@ -953,7 +976,17 @@ static NSString *str(const char *s)
         _logWindow.title = @"FujiNet Console Log";
         _logWindow.releasedWhenClosed = NO;
         _logWindow.delegate = self;
-        _logWindow.contentView = scroll;
+        {
+            /* the log over a strip with the Help button */
+            NSView *box = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 860, 600)];
+            NSButton *help = H89HelpButton(@"fujilog");
+            [help setFrameOrigin:NSMakePoint(10, 6)];
+            help.autoresizingMask = NSViewMaxXMargin | NSViewMaxYMargin;
+            [box addSubview:scroll];
+            [box addSubview:help];
+            _logWindow.contentView = box;
+        }
+        H89SetHelpContext(_logWindow, @"fujilog");
         [_logWindow center];
     }
     if (!_logTimer)

@@ -31,6 +31,10 @@ h89_add_test(no_sdl_link no_sdl_link_test)
 h89_test(config_test config_test.c)
 h89_add_test(config config_test)
 
+# The built-in Help covers every setting, key and context.
+h89_test(help_test help_test.c)
+h89_add_test(help help_test)
+
 # The H19: every escape sequence it handles, line 25, wrapping, the
 # keyboard's encodings in every keypad mode, BREAK, off-line, the 8250.
 h89_test(h19_escape_test h19_escape_test.cpp)

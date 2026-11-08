@@ -14,6 +14,7 @@
  */
 
 #include "window.h"
+#include "help/help_window.h"
 
 #include "debugger/dbg_window.h"
 #include "display.h"
@@ -132,6 +133,32 @@ gboolean h89_window_key(H89Window *self, guint keyval, GdkModifierType state)
     return TRUE;
 }
 
+const char *h89_window_help_context(H89Window *self)
+{
+    AdwDialog *d = adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(self));
+    if (d && ADW_IS_PREFERENCES_DIALOG(d)) {
+        static char ctx[64];
+        const char *page = adw_preferences_dialog_get_visible_page_name(ADW_PREFERENCES_DIALOG(d));
+        g_snprintf(ctx, sizeof ctx, "prefs/%s", page ? page : "machine");
+        return ctx;
+    }
+    if (self->rom_setup_open)
+        return "nobios";
+    return "main";
+}
+
+/* app.help: every window's Ctrl+Shift+H, for what it shows. Not a cast of
+ * the active window: it can be the debugger or the log. */
+static void action_help(GSimpleAction *a, GVariant *p, gpointer user_data)
+{
+    (void)a; (void)p;
+    h89_help_for(gtk_application_get_active_window(GTK_APPLICATION(user_data)));
+}
+
+static const GActionEntry app_actions[] = {
+    { "help", action_help, NULL, NULL, NULL, { 0 } },
+};
+
 /* An open dialog (Preferences, About, an alert) or menu has the keyboard:
  * Escape closes it and the arrows and Return move through it, instead of
  * going to the H19. The key capture sits on the window, ahead of them. */
@@ -148,6 +175,13 @@ static gboolean on_key_pressed(GtkEventControllerKey *ctrl, guint keyval, guint 
 {
     H89Window *self = user_data;
     (void)ctrl; (void)keycode;
+    /* F1 is the H19's f1 in the window itself, and Help while Preferences or
+     * another dialog is open */
+    if (keyval == GDK_KEY_F1 && adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(self)) &&
+        !(state & GDK_MODIFIER_MASK & ~GDK_LOCK_MASK)) {
+        h89_help_for(GTK_WINDOW(self));
+        return TRUE;
+    }
     if (ui_has_keyboard(self))
         return FALSE;
     return h89_window_key(self, keyval, state);
@@ -1158,6 +1192,7 @@ static GMenu *build_menu(H89Window *self)
     g_menu_append_section(menu, "FujiNet", G_MENU_MODEL(fuji));
 
     g_menu_append(app, "_Preferences", "win.prefs");
+    g_menu_append(app, "FujiNet Go H89 _Help", "app.help");
     g_menu_append(app, "_About FujiNet Go H89", "win.about");
     g_menu_append(app, "_Quit", "win.quit");
     g_menu_append_section(menu, NULL, G_MENU_MODEL(app));
@@ -1225,6 +1260,12 @@ GtkWidget *h89_window_new(AdwApplication *app, h89session *session)
 
     g_action_map_add_action_entries(G_ACTION_MAP(self), win_actions, G_N_ELEMENTS(win_actions),
                                     self);
+    if (!g_action_map_lookup_action(G_ACTION_MAP(app), "help"))
+        g_action_map_add_action_entries(G_ACTION_MAP(app), app_actions, G_N_ELEMENTS(app_actions), app);
+    {
+        static const char *const help_accels[] = { "<Control><Shift>h", NULL };
+        gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.help", help_accels);
+    }
     {
         /* CTRL+SHIFT: CTRL alone is the H19's control codes */
         static const char *const prefs[] = { "<Control>comma", NULL };

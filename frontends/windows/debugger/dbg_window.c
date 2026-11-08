@@ -28,6 +28,7 @@
 #include "h89debug.h"
 #include "../resource.h"
 #include "../win_common.h"
+#include "../help/help_window.h"
 
 #define NTABS 6
 #define TAB_FUJINET 5
@@ -44,6 +45,7 @@ enum {
     ID_BPS = 500, ID_BP_TYPE, ID_BP_START, ID_BP_END, ID_BP_COND, ID_BP_ADD, ID_BP_DEL, ID_BP_CLEAR,
     ID_H89 = 600,
     ID_FUJI_CLEAR = 700, ID_FUJI_TEXT, ID_FUJI_STATE,
+    ID_HELP_BTN = 710,
 };
 
 static HWND g_dw, g_tab, g_page[NTABS], g_status, g_run, g_radix;
@@ -501,6 +503,7 @@ static void on_command(int id, int notify)
     case ID_RUN:
         if (h89debug_is_stopped(g_d)) h89debug_resume(g_d); else h89debug_stop(g_d);
         break;
+    case ID_HELP_BTN: h89_help_for(g_dw); break;
     case ID_STEP: h89debug_step(g_d); break;
     case ID_OVER: h89debug_step_over(g_d); break;
     case ID_OUT: h89debug_step_out(g_d); break;
@@ -682,7 +685,7 @@ static void layout(void)
     GetClientRect(g_dw, &rc);
     w = rc.right;
     h = rc.bottom;
-    MoveWindow(g_status, U(408), U(48), w > U(420) ? w - U(416) : U(10), U(18), TRUE);
+    MoveWindow(g_status, U(456), U(48), w > U(468) ? w - U(464) : U(10), U(18), TRUE);
     MoveWindow(g_tab, U(8), U(76), w - U(16), h - U(84), TRUE);
     GetClientRect(g_tab, &tr);
     TabCtrl_AdjustRect(g_tab, FALSE, &tr);
@@ -733,6 +736,11 @@ static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             int sel = TabCtrl_GetCurSel(g_tab);
             for (int i = 0; i < NTABS; i++)
                 ShowWindow(g_page[i], i == sel ? SW_SHOW : SW_HIDE);
+            {
+                static const char *const ctx[NTABS] = { "debugger/prompt", "debugger/cpu", "debugger/disassembly",
+                                                        "debugger/breakpoints", "debugger/h89", "debugger/fujinet" };
+                h89_help_set_context(hwnd, ctx[sel >= 0 && sel < NTABS ? sel : 0], 1);
+            }
             if (sel == 0)
                 SetFocus(g_in);
             if (sel == TAB_FUJINET)
@@ -807,6 +815,7 @@ static void build(HWND owner)
     ctl(g_dw, "BUTTON", "Save Dis...", 0, x, 42, 84, 28, ID_SAVE_DIS, f); x += 90;
     ctl(g_dw, "BUTTON", "Save RAM...", 0, x, 42, 84, 28, ID_SAVE_RAM, f); x += 90;
     ctl(g_dw, "BUTTON", "Save State...", 0, x, 42, 90, 28, ID_SAVE_REGS, f); x += 100;
+    ctl(g_dw, "BUTTON", "Help", 0, x, 42, 70, 28, ID_HELP_BTN, f); x += 78;
     g_status = ctl(g_dw, "STATIC", "", SS_ENDELLIPSIS, x, 48, 600, 18, 0, f);
 
     g_tab = ctl(g_dw, WC_TABCONTROLA, "", WS_CLIPSIBLINGS, 8, 76, 980, 660, 0, f);
@@ -883,6 +892,7 @@ static void build(HWND owner)
         if (first == 0)
             SetFocus(g_in);
     }
+    h89_help_set_context(g_dw, "debugger/prompt", 1);
     layout();
     SetTimer(g_dw, IDT_POLL, 100, NULL);
 }

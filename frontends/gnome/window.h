@@ -26,6 +26,10 @@ void h89_window_start(H89Window *self);
  * own keys (F9, F11, F12), else the H19's. TRUE when it was used. */
 gboolean h89_window_key(H89Window *self, guint keyval, GdkModifierType state);
 
+/* The Help context the main window shows now: "main", "nobios" while the
+ * ROM alert is up, or "prefs/<page>" while Preferences are open. */
+const char *h89_window_help_context(H89Window *self);
+
 /* The display's shape: 0 = the CRT's 4:3, 1 = square pixels. */
 void h89_window_apply_aspect(H89Window *self, int aspect);
 void h89_window_apply_smooth(H89Window *self, int smooth);

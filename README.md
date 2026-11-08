@@ -46,6 +46,15 @@ generator are copyrighted and not included. Import them (MAME's `h89.zip` and
 `heath_tlb.zip` as they are, or the loose images) on first start; they are
 recognised by CRC-32. See `COMPLIANCE.md`.
 
+## Built-in Help
+
+**Help ▸ FujiNet Go H89 Help** (Ctrl+Shift+H, ⌘? on a Mac) opens a searchable
+Help, and the Help buttons in Preferences, the debugger, the H19 Keys window and
+the console log open the topic for what they show. The text is
+[data/help/help.md](data/help/help.md), which GitHub shows as it is; the build
+embeds it and every frontend lays it out natively. F1 opens it in dialogs only:
+in the main window F1 is the H19's f1.
+
 ## Disks
 
 | Controller | Drives | Image formats |

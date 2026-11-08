@@ -16,6 +16,8 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
+#include <QShortcut>
+#include "help/HelpWindow.h"
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -476,7 +478,19 @@ int SettingsDialog::run(QWidget *parent, h89session *session, std::function<void
     fnv->addStretch(1);
     tabs->addTab(scrolled(fnPage), QStringLiteral("FujiNet"));
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    /* Help, F1 and Ctrl+Shift+H (the app's shortcuts don't reach a modal dialog) */
+    {
+        static const char *const ctx[] = { "prefs/machine", "prefs/slots", "prefs/switches",
+                                           "prefs/cpnet", "prefs/display", "prefs/fujinet" };
+        auto pageContext = [](int i) { return QString::fromLatin1(ctx[i >= 0 && i < 6 ? i : 0]); };
+        dlg.setProperty("h89HelpContext", pageContext(tabs->currentIndex()));
+        QObject::connect(tabs, &QTabWidget::currentChanged, &dlg,
+                         [&dlg, pageContext](int i) { dlg.setProperty("h89HelpContext", pageContext(i)); });
+    }
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
+    QObject::connect(buttons, &QDialogButtonBox::helpRequested, &dlg, [&dlg] { h89HelpFor(&dlg); });
+    for (const char *key : { "F1", "Ctrl+Shift+H" })
+        new QShortcut(QKeySequence(QString::fromLatin1(key)), &dlg, [&dlg] { h89HelpFor(&dlg); });
     outer->addWidget(buttons);
 
     changed = [&]() {

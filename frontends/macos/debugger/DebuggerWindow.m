@@ -18,6 +18,7 @@
  */
 
 #import "DebuggerWindow.h"
+#import "../help/HelpWindow.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -519,6 +520,11 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
     [_radix setRefusesFirstResponder:YES];
     [bar addView:_radix inGravity:NSStackViewGravityLeading];
 
+    {
+        NSButton *helpBtn = H89HelpButton(nil);
+        [helpBtn setRefusesFirstResponder:YES];
+        [bar addView:helpBtn inGravity:NSStackViewGravityTrailing];
+    }
     [bar addView:[self button:@"Symbols…" tip:@"Load a symbol file" action:@selector(loadSymbols:)]
        inGravity:NSStackViewGravityTrailing];
     {
@@ -808,6 +814,7 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
             [_tabs selectTabViewItemAtIndex:t];
     }
     _tabs.delegate = self;
+    [self updateHelpContext];
 
     root = vstack(@[ toolbar, _status, _tabs ]);
     root.edgeInsets = NSEdgeInsetsMake(8, 8, 8, 8);
@@ -818,8 +825,17 @@ static void fillWidth(NSStackView *stack, NSView *view, CGFloat inset)
 }
 
 /* The Prompt's field takes the keys when its tab shows. */
+/* Help's contexts (h89help.h): "debugger/" and the tab's name */
+- (void)updateHelpContext
+{
+    const NSInteger i = [_tabs indexOfTabViewItem:_tabs.selectedTabViewItem];
+    if (i >= 0 && i < NTABS)
+        H89SetHelpContext(self.window, [@"debugger/" stringByAppendingString:@(kTabNames[i])]);
+}
+
 - (void)tabView:(NSTabView *)tabView didSelectTabViewItem:(NSTabViewItem *)item
 {
+    [self updateHelpContext];
     if ([tabView indexOfTabViewItem:item] == TAB_PROMPT)
         [self.window makeFirstResponder:_promptIn];
     if ([tabView indexOfTabViewItem:item] == TAB_FUJINET)

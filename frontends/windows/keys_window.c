@@ -15,6 +15,8 @@
 
 #include "resource.h"
 #include "win_common.h"
+#include "help/help_window.h"
+#define ID_KEYS_HELP 3999
 
 #define KEY_ID_BASE 3000
 #define ID_SHIFT    2999
@@ -67,6 +69,10 @@ static LRESULT CALLBACK keys_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     switch (msg) {
     case WM_COMMAND: {
         int id = LOWORD(wp);
+        if (id == ID_KEYS_HELP) {
+            h89_help_for(hwnd);
+            return 0;
+        }
         if (id >= KEY_ID_BASE) {
             int shift = SendMessageA(g_shift, BM_GETCHECK, 0, 0) == BST_CHECKED;
             int key = id - KEY_ID_BASE;
@@ -171,6 +177,8 @@ void h89w_keys_toggle(HWND owner)
         button(g_keys, inst, kPad[i].label, KEY_ID_BASE + kPad[i].key, 12 + (i % 3) * 88, y + (i / 3) * 36, 84, 32, 0);
     for (int i = 0; i < 8; i++)
         g_lights[i] = label(g_keys, inst, "", 300, y + i * 18, 220);
+    button(g_keys, inst, "Help", ID_KEYS_HELP, 540, y, 80, 28, 0);
+    h89_help_set_context(g_keys, "keys", 0);
     y += 4 * 36 + 10;
 
     SetRect(&want, 0, 0, h89w_px(640), h89w_px(y));

@@ -21,12 +21,14 @@
 
 #include "resource.h"
 #include "win_common.h"
+#include "help/help_window.h"
 
 #define NPAGES 6
 #define MAX_ROWS 160
 #define ID_BASE 5000
 #define ID_OK 4001
 #define ID_CANCEL 4002
+#define ID_HELP 4003
 #define ID_IMPORT 4003
 #define ID_CPNET_DIR 4004
 #define ID_WEBUI 4005
@@ -470,6 +472,14 @@ static LRESULT CALLBACK page_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     return DefWindowProcA(hwnd, msg, wp, lp);
 }
 
+/* Help's contexts (h89help.h), one per page */
+static void set_help_context(int page)
+{
+    static const char *const ctx[NPAGES] = { "prefs/machine", "prefs/slots", "prefs/switches", "prefs/cpnet",
+                                             "prefs/display", "prefs/fujinet" };
+    h89_help_set_context(g_win, ctx[page >= 0 && page < NPAGES ? page : 0], 1);
+}
+
 static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg) {
@@ -478,6 +488,7 @@ static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             int sel = TabCtrl_GetCurSel(g_tab);
             for (int i = 0; i < NPAGES; i++)
                 ShowWindow(g_pages[i], i == sel ? SW_SHOW : SW_HIDE);
+            set_help_context(sel);
             changed();
         }
         return 0;
@@ -485,6 +496,10 @@ static LRESULT CALLBACK win_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         rebuild_sw501();
         return 0;
     case WM_COMMAND:
+        if (LOWORD(wp) == ID_HELP) {
+            h89_help_for(hwnd);
+            return 0;
+        }
         if (LOWORD(wp) == ID_OK || LOWORD(wp) == IDOK) {
             char why[256];
             if (!h89_config_validate(&g_cfg, why, sizeof why)) {
@@ -778,9 +793,15 @@ void h89w_show_settings(HWND owner)
                                (HMENU)ID_CANCEL, inst, NULL);
         h89w_set_font(c, h89w_font());
     }
+    {
+        HWND hb = CreateWindowA("BUTTON", "Help", WS_CHILD | WS_VISIBLE | WS_TABSTOP, h89w_px(12), h89w_px(602),
+                                h89w_px(90), h89w_px(28), g_win, (HMENU)ID_HELP, inst, NULL);
+        h89w_set_font(hb, h89w_font());
+    }
     for (int i = 0; pg && i < NPAGES; i++)
         if (!strcmp(pg, keys[i]))
             first = i;
+    set_help_context(first);
     TabCtrl_SetCurSel(g_tab, first);
     ShowWindow(g_pages[first], SW_SHOW);
     changed();

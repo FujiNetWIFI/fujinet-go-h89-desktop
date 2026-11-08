@@ -31,6 +31,8 @@
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QShortcut>
+#include "help/HelpWindow.h"
 #include <QMimeData>
 #include <QPushButton>
 #include <QStatusBar>
@@ -58,6 +60,7 @@ MainWindow::MainWindow(h89session *session, QWidget *parent)
     : QMainWindow(parent), m_session(session)
 {
     setWindowTitle(QStringLiteral("FujiNet Go H89"));
+    setProperty("h89HelpContext", QStringLiteral("main"));
     /* the H19's 640 x 500 at 4:3, half again */
     resize(1000, 750 + 60);
     setAcceptDrops(true);
@@ -201,6 +204,17 @@ void MainWindow::buildMenus()
     });
 
     QMenu *help = menuBar()->addMenu(QStringLiteral("&Help"));
+    {
+        /* works from every window of the app (the Debugger has the keyboard too) */
+        QAction *helpAct = help->addAction(QStringLiteral("FujiNet Go H89 &Help"));
+        helpAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
+        helpAct->setShortcutContext(Qt::ApplicationShortcut);
+        addAction(helpAct);
+        connect(helpAct, &QAction::triggered, this, [this] {
+            h89HelpFor(QApplication::activeWindow() ? QApplication::activeWindow() : this);
+        });
+    }
+    help->addSeparator();
     help->addAction(QStringLiteral("&About FujiNet Go H89"), this, &MainWindow::showAbout);
 }
 
@@ -429,8 +443,15 @@ void MainWindow::showRomSetup()
             .arg(QString::fromUtf8(h89session_roms_path(m_session)), QString::fromUtf8(what)));
     QPushButton *import = box.addButton(QStringLiteral("Import ROMs..."), QMessageBox::AcceptRole);
     box.addButton(QStringLiteral("Not Now"), QMessageBox::RejectRole);
+    QPushButton *helpBtn = box.addButton(QStringLiteral("Help"), QMessageBox::HelpRole);
     box.setDefaultButton(import);
-    box.exec();
+    box.setProperty("h89HelpContext", QStringLiteral("nobios"));
+    new QShortcut(QKeySequence(Qt::Key_F1), &box, [&box] { h89HelpFor(&box); });
+    do {
+        box.exec();
+        if (box.clickedButton() == helpBtn)
+            h89HelpShow(this, QStringLiteral("nobios"));
+    } while (box.clickedButton() == helpBtn);
     if (box.clickedButton() == import)
         importRoms();
     updateStatus();

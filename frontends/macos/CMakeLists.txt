@@ -33,6 +33,7 @@ add_executable(fujinet-go-h89-macos MACOSX_BUNDLE
   KeyForward.m
   H19KeysWindow.m
   SettingsWindow.m
+  help/HelpWindow.m
   debugger/DebuggerWindow.m
   "${H89_ICNS}"
   ${H89_BUNDLE_LICENSES}

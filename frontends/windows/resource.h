@@ -25,6 +25,7 @@
 #define IDM_FUJINET_LOG    1041
 #define IDM_FUJINET_RESTART 1042
 #define IDM_ABOUT          1050
+#define IDM_HELP           1051
 
 /* the Drives menu's per-drive items: IDM_DRIVE_BASE + id * 4 + action */
 #define IDM_DRIVE_BASE     4000
@@ -36,6 +37,7 @@
 
 #define IDC_STATUSBAR      2200
 #define IDC_LOG_EDIT       2100
+#define IDC_LOG_HELP       2101
 #define IDT_STATUS         1
 #define IDT_FAST           2
 #define IDT_LOG_REFRESH    3

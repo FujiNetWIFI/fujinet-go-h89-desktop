@@ -12,6 +12,7 @@
 #include "keys_panel.h"
 
 #include "window.h"
+#include "help/help_window.h"
 
 typedef struct {
     GtkWindow *win;
@@ -235,6 +236,7 @@ void h89_keys_panel_toggle(GtkWindow *parent, h89session *session)
     }
 
     header = adw_header_bar_new();
+    adw_header_bar_pack_end(ADW_HEADER_BAR(header), h89_help_button("keys"));
     toolbar = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar), box);

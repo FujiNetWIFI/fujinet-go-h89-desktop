@@ -8,6 +8,7 @@
  */
 
 #include "fujilog.h"
+#include "help/help_window.h"
 
 #include <string.h>
 
@@ -100,8 +101,9 @@ void h89_fujilog_show(GtkWindow *parent, h89session *session)
 
     {
         GtkWidget *toolbar = adw_toolbar_view_new();
-        adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar),
-                                     adw_header_bar_new());
+        GtkWidget *hdr = adw_header_bar_new();
+        adw_header_bar_pack_end(ADW_HEADER_BAR(hdr), h89_help_button("fujilog"));
+        adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar), hdr);
         adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar), scroll);
         adw_window_set_content(ADW_WINDOW(lw->win), toolbar);
     }

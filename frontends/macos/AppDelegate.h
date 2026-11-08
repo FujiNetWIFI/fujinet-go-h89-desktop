@@ -8,7 +8,7 @@
 
 #include "h89session.h"
 
-@interface H89AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate>
+@interface H89AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSAlertDelegate>
 /* mediaPath: a file named on the command line (a disk, ROMs or anything for
  * the SD folder), or NULL. */
 - (instancetype)initWithSession:(h89session *)session mediaPath:(const char *)mediaPath;

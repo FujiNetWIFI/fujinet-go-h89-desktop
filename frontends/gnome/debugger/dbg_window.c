@@ -30,6 +30,7 @@
 
 #include "h89debug.h"
 #include "../window.h"
+#include "../help/help_window.h"
 
 #define DISASM_WINDOW 48
 #define NREGS 17
@@ -100,6 +101,9 @@ static const struct { const char *name; int reg; int wide; } k_regs[NREGS] = {
 /* The tabs, in order, by the names H89_DEBUGGER_TAB takes. */
 static const char *const k_tab_names[] = { "prompt", "cpu", "disassembly", "breakpoints", "h89",
                                            "fujinet" };
+/* Help's contexts (h89help.h), one per tab */
+static const char *const k_tab_contexts[] = { "debugger/prompt", "debugger/cpu", "debugger/disassembly",
+                                              "debugger/breakpoints", "debugger/h89", "debugger/fujinet" };
 
 /* ---- helpers --------------------------------------------------------------------- */
 
@@ -926,6 +930,7 @@ static gboolean on_key(GtkEventControllerKey *c, guint keyval, guint code, GdkMo
     DbgWin *w = ud;
     (void)c; (void)code;
     switch (keyval) {
+    case GDK_KEY_F1: h89_help_for(w->win); return TRUE;
     case GDK_KEY_F5: on_run(NULL, w); return TRUE;
     case GDK_KEY_F7: on_step(NULL, w); return TRUE;
     case GDK_KEY_F8:
@@ -1239,8 +1244,11 @@ static void focus_prompt_if_shown(DbgWin *w)
 
 static void on_switch_page(GtkNotebook *nb, GtkWidget *page, guint num, gpointer ud)
 {
+    DbgWin *hw = ud;
     (void)nb;
     (void)page;
+    if (num < G_N_ELEMENTS(k_tab_contexts))
+        h89_help_set_context(hw->win, k_tab_contexts[num]);
     if (num == TAB_FUJINET)
         refresh_fujinet(ud, FALSE);
     focus_prompt_if_shown(ud);
@@ -1274,6 +1282,7 @@ void h89_debugger_show(GtkWindow *parent, h89session *session)
     w->title = ADW_WINDOW_TITLE(adw_window_title_new("Debugger", ""));
     header = adw_header_bar_new();
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(header), GTK_WIDGET(w->title));
+    adw_header_bar_pack_end(ADW_HEADER_BAR(header), h89_help_button(NULL));
 
     w->notebook = GTK_NOTEBOOK(gtk_notebook_new());
     gtk_notebook_append_page(w->notebook, build_prompt(w), gtk_label_new("Prompt"));
@@ -1310,6 +1319,10 @@ void h89_debugger_show(GtkWindow *parent, h89session *session)
     }
 
     g_signal_connect_after(w->notebook, "switch-page", G_CALLBACK(on_switch_page), w);
+    {
+        int cur = gtk_notebook_get_current_page(w->notebook);
+        h89_help_set_context(w->win, k_tab_contexts[cur > 0 && cur < 6 ? cur : 0]);
+    }
 
     g_win = w;
     g_signal_connect(w->win, "map", G_CALLBACK(on_map), w);
