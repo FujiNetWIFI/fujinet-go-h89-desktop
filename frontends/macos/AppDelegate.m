@@ -258,6 +258,14 @@ static NSString *str(const char *s)
 - (void)applicationWillTerminate:(NSNotification *)note
 {
     (void)note;
+    /* Close the windows while the session is alive: AppKit closes them again
+     * after this returns, and their will-close handlers use it. */
+    _window.delegate = nil;
+    for (NSWindow *w in [[NSApp windows] copy]) {
+        if (w == _window) continue;
+        [w close];
+        w.delegate = nil;           /* AppKit's own close finds no handler */
+    }
     [_statusTimer invalidate];
     [_fastTimer invalidate];
     [_logTimer invalidate];
