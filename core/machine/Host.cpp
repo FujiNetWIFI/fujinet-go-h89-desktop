@@ -10,6 +10,7 @@
  */
 
 #include "host.h"
+#include "apple_realtime.h"
 
 #include "FujiNetCard.h"
 #include "H19Render.h"
@@ -188,6 +189,7 @@ machineThread()
     // Darwin coalesces the timers of a default-QoS thread with no UI by
     // whole frames on a busy machine; an emulator's clock is interactive.
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    apple_realtime_begin(1e9 / 60.0);
 #endif
 
     MachineContext::Scope scope(&s_machine->context());

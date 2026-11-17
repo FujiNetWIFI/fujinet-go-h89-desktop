@@ -126,6 +126,7 @@ static NSString *str(const char *s)
     BOOL _launched;
     NSWindow *_window;
     H89DisplayView *_display;
+    id<NSObject> _activity;          /* no App Nap, no timer coalescing while we run */
     H89ContentView *_content;
     H89Light *_diskLight, *_linkLight;
     NSTextField *_statusText;
@@ -175,6 +176,13 @@ static NSString *str(const char *s)
 - (void)applicationDidFinishLaunching:(NSNotification *)note
 {
     (void)note;
+
+    /* An emulator is latency-critical work: App Nap must not throttle the
+     * machine thread or coalesce its timers when the window is behind
+     * another, and Game Mode (Info.plist) asks the system to favour it. */
+    _activity = [[NSProcessInfo processInfo]
+        beginActivityWithOptions:(NSActivityUserInitiated | NSActivityLatencyCritical)
+                          reason:@"Emulating a Heathkit H89"];
 
     /* The H19's 640x500 at 4:3, half again: a comfortable first window. */
     const NSRect frame = NSMakeRect(0, 0, 960, 720 + STATUS_HEIGHT);
@@ -270,6 +278,10 @@ static NSString *str(const char *s)
     [_fastTimer invalidate];
     [_logTimer invalidate];
     [_display stop];
+    if (_activity) {
+        [[NSProcessInfo processInfo] endActivity:_activity];
+        _activity = nil;
+    }
     /* writes every disk back */
     h89session_stop(_session);
     h89session_settings_flush(_session);

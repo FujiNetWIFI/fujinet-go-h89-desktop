@@ -61,6 +61,7 @@ target_link_libraries(fujinet-go-h89-macos PRIVATE h89_session
   "-framework CoreVideo"    # CVDisplayLink: this platform's frame clock
   "-framework CoreGraphics"
   "-framework QuartzCore"
+  "-framework Metal"        # the picture is a texture on a CAMetalLayer
   "-framework UniformTypeIdentifiers"   # UTType: the open panels' filters
   "-framework Carbon")      # kVK_* virtual key codes
 target_compile_options(fujinet-go-h89-macos PRIVATE -Wall -Wextra
